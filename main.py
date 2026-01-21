@@ -1,21 +1,39 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from database import engine
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware # [필수] 이거 꼭 추가해야 함!
 from sqlmodel import SQLModel
+from database import engine
+from app.models import tables 
+from app.api import auth
 
-# 서버가 시작될 때 DB 테이블을 생성하는 기능
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🔄 DB 연결을 시도합니다...")
-    try:
-        SQLModel.metadata.create_all(engine)
-        print("✅ DB 연결 성공!")
-    except Exception as e:
-        print(f"❌ DB 연결 실패: {e}")
+    print("🚀 DB 테이블 생성 시작...")
+    # [설명] 이미 테이블이 있으면 건너뛰고, 없으면 새로 만듭니다.
+    SQLModel.metadata.create_all(engine)
+    print("✅ DB 테이블 생성 완료!")
     yield
 
 app = FastAPI(lifespan=lifespan)
 
+# CORS 설정
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# [추가 2] 라우터 등록 (이 줄이 없으면 API가 작동 안 함!)
+app.include_router(auth.router)
+
 @app.get("/")
 def read_root():
-    return {"message": "Hello, Today Project!", "status": "Server is running"}
+    return {"message": "Hello, Today Project! DB is ready."}

@@ -2,8 +2,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Path
 import json
-from fastapi import UploadFile, File, Form # 추가
-from app.services.s3_service import upload_image_to_s3
+from fastapi import UploadFile, File, Form, HTTPException # 추가
+from app.services.s3_service import upload_image_to_s3, delete_image_from_s3
 
 # 2. DB 관련 도구들
 from sqlmodel import Session, func, select # func, select 꼭 필요함!
@@ -24,6 +24,7 @@ from app.crud import diary as crud_diary
 
 router = APIRouter()
 
+# 1. 일기 등록 
 @router.post("/", response_model=DiaryRead)
 def create_diary(
     # JSON 대신 Form과 File을 사용합니다.
@@ -94,15 +95,52 @@ def read_diary(
 # 4. 일기 수정 (PATCH /diaries/{diary_id})
 @router.patch("/{diary_id}", response_model=DiaryRead)
 def update_diary(
-    diary_in: DiaryUpdate,
-    diary_id: int = Path(..., description="수정할 일기 ID"),
+    diary_id: int,
+    input_type: Optional[str] = Form(None),
+    content: Optional[str] = Form(None),
+    keywords_json: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
-    일기 내용을 수정합니다. (보낸 필드만 수정됨)
+    일기 내용을 수정합니다. (사진 교체 포함, 보낸 필드만 수정됨)
     """
-    return crud_diary.update_diary(db, diary_id, diary_in, current_user.user_id)
+    # 1. 기존 데이터 조회 (내 일기가 맞는지 확인)
+    db_diary = crud_diary.get_diary(db, diary_id, current_user.user_id)
+    new_image_url = db_diary.image_url
+
+    # 2. 📸 사진 처리 로직
+    if image:
+        # 기존에 등록된 사진이 있다면 S3에서 먼저 삭제하여 용량 절약
+        if db_diary.image_url:
+            delete_image_from_s3(db_diary.image_url)
+        # 새로운 사진 S3 업로드 후 새 URL 획득
+        new_image_url = upload_image_to_s3(image)
+
+    # 3. 🔍 키워드 JSON 안전하게 파싱
+    keywords = None
+    if keywords_json:
+        try:
+            # 문자열 형태인 키워드를 파이썬 딕셔너리로 변환
+            keywords = json.loads(keywords_json)
+        except json.JSONDecodeError:
+            # 🚨 잘못된 형식이 들어오면 500 에러 대신 친절한 400 에러를 반환
+            raise HTTPException(
+                status_code=400, 
+                detail="keywords_json 형식이 올바르지 않습니다. {'key': 'value'} 형식의 JSON 문자열이어야 합니다."
+            )
+
+    # 4. 수정 객체 생성 (이때 input_type, content 등이 None이면 CRUD에서 제외됨)
+    diary_in = DiaryUpdate(
+        input_type=input_type,
+        content=content,
+        keywords=keywords
+    )
+    
+    # 5. DB 업데이트 실행
+    return crud_diary.update_diary_with_image(db, db_diary, diary_in, new_image_url)
+
 
 # 5. 일기 삭제 (DELETE /diaries/{diary_id})
 @router.delete("/{diary_id}")
@@ -167,3 +205,19 @@ def receive_ai_result(
     db.commit()
     
     return {"msg": "Analysis & Solutions saved successfully"}
+
+# 7. 사진만 삭제하는 기능
+@router.delete("/{diary_id}/image")
+def delete_diary_photo(
+    diary_id: int,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    db_diary = crud_diary.get_diary(db, diary_id, current_user.user_id)
+    if db_diary.image_url:
+        delete_image_from_s3(db_diary.image_url) # 👈 상단 임포트 덕분에 작동합니다.
+        db_diary.image_url = None 
+        db.add(db_diary)
+        db.commit()
+        db.refresh(db_diary)
+    return {"message": "사진이 성공적으로 삭제되었습니다."}

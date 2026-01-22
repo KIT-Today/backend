@@ -103,15 +103,24 @@ def get_diaries(
     return db.exec(statement).all()
 
 # 4. 일기 수정
-def update_diary(db: Session, diary_id: int, diary_in: DiaryUpdate, user_id: int) -> Diary:
-    db_diary = get_diary(db, diary_id, user_id) # 존재 확인
-
-    update_data = diary_in.model_dump(exclude_unset=True)
+def update_diary_with_image(
+    db: Session, 
+    db_diary: Diary, 
+    diary_in: DiaryUpdate, 
+    image_url: Optional[str]
+) -> Diary:
+    """
+    이미 조회된 db_diary 객체를 받아 내용을 수정합니다.
+    """
+    # 1. 전달받은 필드들만 골라서 업데이트 (input_type, content, keywords 등)
+    update_data = diary_in.model_dump(exclude_unset=True, exclude_none=True)
     for key, value in update_data.items():
         setattr(db_diary, key, value)
     
-    # created_at은 수정하지 않음!
+    # 2. 새로운 이미지 URL 반영 (null일 수도 있고, 기존과 같을 수도 있음)
+    db_diary.image_url = image_url
     
+    # 3. DB 저장
     db.add(db_diary)
     db.commit()
     db.refresh(db_diary)

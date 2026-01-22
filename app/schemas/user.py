@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime
 
 # 1. 회원가입할 때 받을 데이터 (Request)
 class UserCreate(BaseModel):
@@ -39,7 +40,20 @@ class UserInfoUpdate(BaseModel):
     is_push_enabled: Optional[bool] = None
     fcm_token: Optional[str] = None  # 토큰도 갱신할 수 있음.
 
-# 7. 내 정보 상세 조회 시 돌려줄 데이터 (Response)
+
+# 7. 앱 처음 화면 문구 응답 전용
+class SplashMessageRead(BaseModel):
+    msg_content: str   
+
+# 8. 프로필 조회 시 메달 목록
+class MedalInfo(BaseModel):
+    achieve_id: int
+    medal_name: str
+    medal_explain: str
+    earned_at: datetime
+    is_read: bool
+
+# 9. 내 정보 상세 조회 시 돌려줄 데이터 (Response)
 # 프론트엔드 마이페이지에 뿌려줄 정보들의 집합입니다.
 class UserProfileResponse(BaseModel):
     user_id: int
@@ -52,6 +66,6 @@ class UserProfileResponse(BaseModel):
     # 아직 취향 설정을 안 했으면 null일 수 있으니 Optional 처리
     preference: Optional[UserPreferenceUpdate] = None
 
-# 앱 처음 화면 문구 응답 전용
-class SplashMessageRead(BaseModel):
-    msg_content: str    
+    # 획득한 메달 목록과 읽지 않은 알림 여부
+    achievements: List[MedalInfo] = []
+    has_unread_medals: bool = False

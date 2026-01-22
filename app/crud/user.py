@@ -1,8 +1,17 @@
 from sqlmodel import Session, select
-from app.models.tables import User, UserPreference, PushMessage
+from app.models.tables import (
+    User, 
+    UserPreference, 
+    PushMessage, 
+    Diary, 
+    EmotionAnalysis, 
+    Medal, 
+    Achievement
+)
 from app.schemas.user import UserCreate, UserPreferenceUpdate, UserInfoUpdate
 from app.core.security import get_password_hash
 from sqlalchemy import func
+from sqlalchemy import desc
 
 # 1. 이메일로 유저 찾기 (중복 가입 방지 & 로그인 시 사용)
 def get_user_by_email(db: Session, email: str):
@@ -128,3 +137,54 @@ def get_random_splash_message(db: Session):
     )
     result = db.exec(statement).first()
     return result
+
+# 8. 메달 체크 로직 (전 일기에서 비해 normal이 나온 경우)
+def check_and_award_recovery_medal(session: Session, user_id: int):
+    """
+    번아웃 상태(EE, DP, PA_LOW)에서 NORMAL로 개선 시 메달 수여
+    """
+    # 1. 최근 감정 분석 결과 2개 조회
+    statement = (
+        select(EmotionAnalysis)
+        .join(Diary)
+        .where(Diary.user_id == user_id)
+        .order_by(desc(EmotionAnalysis.created_at))
+        .limit(2)
+    )
+    results = session.exec(statement).all()
+
+    if len(results) < 2:
+        return None
+
+    current = results[0]   # 이번 분석
+    previous = results[1]  # 직전 분석
+
+    # 2. 상태 개선 조건 체크 (Burnout -> NORMAL)
+    burnout_states = ["EE", "DP", "PA_LOW"]
+    if previous.mbi_category in burnout_states and current.mbi_category == "NORMAL":
+        
+        # 3. 메달 마스터 정보 가져오기
+        medal = session.exec(select(Medal).where(Medal.medal_code == "RECOVERY_LIGHT")).first()
+        if not medal: return None
+
+        # 4. 중복 획득 방지 (UniqueConstraint 준수)
+        # 이미 획득했는지 먼저 확인해서 DB 에러를 방지합니다.
+        already_has = session.exec(
+            select(Achievement).where(
+                Achievement.user_id == user_id,
+                Achievement.medal_id == medal.medal_id
+            )
+        ).first()
+
+        # 5. 아직 없는 메달일 때만 획득 처리
+        if not already_has:
+            new_achievement = Achievement(
+                user_id=user_id,
+                medal_id=medal.medal_id,
+                is_read=False # 획득 직후에는 안 읽음 상태
+            )
+            session.add(new_achievement)
+            session.commit()
+            return medal
+            
+    return None

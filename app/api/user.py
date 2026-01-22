@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 from database import get_session
 from app.api.deps import get_current_user
-from app.models.tables import User
+from app.models.tables import User, Achievement
 from app.schemas.user import (
     UserPreferenceUpdate, 
     UserInfoUpdate, 
     UserProfileResponse, 
-    SplashMessageRead
+    SplashMessageRead,
+    MedalInfo
 )
 from app.crud import user as crud_user
 from app.services.notification import check_and_send_inactivity_alarms
@@ -17,13 +18,47 @@ router = APIRouter()
 # 1. 🙋‍♀️ 내 정보 상세 조회 (마이페이지)
 @router.get("/profile", response_model=UserProfileResponse)
 def read_my_profile(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user)
 ):
-    """
-    내 프로필 정보를 조회합니다. (닉네임, 알림설정, 취향정보 등)
-    토큰만 헤더에 넣어서 요청하면 됩니다.
-    """
-    return current_user
+    medal_list = [
+        MedalInfo(
+            achieve_id=ach.achieve_id,
+            medal_name=ach.medal.medal_name,
+            medal_explain=ach.medal.medal_explain,
+            earned_at=ach.earned_at,
+            is_read=ach.is_read
+        ) for ach in current_user.achievements
+    ]
+
+    # ✅ 안 읽은 메달이 하나라도 있는지 체크
+    has_unread = any(not ach.is_read for ach in current_user.achievements)
+
+    return UserProfileResponse(
+        **current_user.dict(), 
+        preference=current_user.preference,
+        achievements=medal_list,
+        has_unread_medals=has_unread
+    )
+
+# 1-2 사용자가 메달 확인 버튼을 눌렀을 때 호출하는 API
+@router.patch("/medals/{achieve_id}/read")
+def mark_medal_as_read(
+    achieve_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    statement = select(Achievement).where(
+        Achievement.achieve_id == achieve_id,
+        Achievement.user_id == current_user.user_id
+    )
+    achievement = session.exec(statement).first()
+    if not achievement:
+        raise HTTPException(status_code=404, detail="기록 없음")
+    
+    achievement.is_read = True
+    session.add(achievement)
+    session.commit()
+    return {"message": "확인 완료"}
 
 
 

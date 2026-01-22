@@ -5,6 +5,7 @@ from app.api.deps import get_current_user
 from app.models.tables import User
 from app.schemas.user import UserPreferenceUpdate, UserInfoUpdate, UserProfileResponse
 from app.crud import user as crud_user
+from app.services.notification import check_and_send_inactivity_alarms
 
 router = APIRouter()
 
@@ -79,3 +80,14 @@ def delete_my_account(
         raise HTTPException(status_code=400, detail="탈퇴 처리에 실패했습니다.")
         
     return {"message": "회원 탈퇴가 완료되었습니다. 이용해주셔서 감사합니다."}
+
+# 👇 [2. 여기 추가!] 맨 마지막 줄에 이 테스트용 버튼을 붙여넣으세요.
+@router.post("/test/send-inactivity-push")
+def test_send_inactivity_push(
+    db: Session = Depends(get_session)
+):
+    """
+    [테스트용] 3일, 7일, 30일 미접속자에게 알림을 보내고 로그를 쌓습니다.
+    (원래는 밤 12시에 자동 실행되지만, 테스트를 위해 수동으로 실행하는 버튼입니다)
+    """
+    return check_and_send_inactivity_alarms(db)

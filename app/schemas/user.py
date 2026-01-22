@@ -51,3 +51,7 @@ class UserProfileResponse(BaseModel):
     # 취향 정보도 같이 내려줍니다. (UserPreferenceUpdate 구조 재사용)
     # 아직 취향 설정을 안 했으면 null일 수 있으니 Optional 처리
     preference: Optional[UserPreferenceUpdate] = None
+
+# 앱 처음 화면 문구 응답 전용
+class SplashMessageRead(BaseModel):
+    msg_content: str    

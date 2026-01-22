@@ -1,7 +1,8 @@
 from sqlmodel import Session, select
-from app.models.tables import User, UserPreference
+from app.models.tables import User, UserPreference, PushMessage
 from app.schemas.user import UserCreate, UserPreferenceUpdate, UserInfoUpdate
 from app.core.security import get_password_hash
+from sqlalchemy import func
 
 # 1. 이메일로 유저 찾기 (중복 가입 방지 & 로그인 시 사용)
 def get_user_by_email(db: Session, email: str):
@@ -113,3 +114,17 @@ def delete_user(session: Session, user_id: int):
         session.commit()
         return True
     return False
+
+# 7. 앱 처음 화면에 랜덤 문구 조회
+def get_random_splash_message(db: Session):
+    """
+    category가 'SPLASH'인 문구 중 무작위로 하나를 반환합니다.
+    """
+    statement = (
+        select(PushMessage)
+        .where(PushMessage.category == "SPLASH")
+        .order_by(func.random()) # DB에서 바로 랜덤하게 섞기
+        .limit(1)                # 딱 1개만 가져오기
+    )
+    result = db.exec(statement).first()
+    return result

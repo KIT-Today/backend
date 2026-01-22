@@ -3,7 +3,12 @@ from sqlmodel import Session
 from database import get_session
 from app.api.deps import get_current_user
 from app.models.tables import User
-from app.schemas.user import UserPreferenceUpdate, UserInfoUpdate, UserProfileResponse
+from app.schemas.user import (
+    UserPreferenceUpdate, 
+    UserInfoUpdate, 
+    UserProfileResponse, 
+    SplashMessageRead
+)
 from app.crud import user as crud_user
 from app.services.notification import check_and_send_inactivity_alarms
 
@@ -91,3 +96,15 @@ def test_send_inactivity_push(
     (원래는 밤 12시에 자동 실행되지만, 테스트를 위해 수동으로 실행하는 버튼입니다)
     """
     return check_and_send_inactivity_alarms(db)
+
+# 5. 앱 초기 화면에 랜덤 문구 
+@router.get("/splash", response_model=SplashMessageRead)
+def read_splash_message(db: Session = Depends(get_session)):
+    """
+    앱 초기 화면(스플래시)에 띄울 랜덤 문구 하나를 가져옵니다.
+    """
+    message = crud_user.get_random_splash_message(db)
+    if not message:
+        # 문구가 하나도 없을 경우를 대비한 기본 문구
+        return {"msg_content": "오늘도 당신을 기다렸어요."}
+    return message

@@ -24,10 +24,23 @@ def create_diary(db: Session, diary_in: DiaryCreate, user_id: int) -> Diary:
     except Exception as e:
         print(f"⚠️ 출석 처리 중 오류 (일기는 저장됨): {e}")
 
-    # (3) [AI 모델 연결 위치] 
-    # 나중에 여기에 analyze_diary(db_diary.content) 같은 함수를 호출해서
-    # EmotionAnalysis 테이블에 결과를 저장하는 코드를 넣으면 됩니다.
+    # (3) [AI 서버로 분석 요청 보내기]
+    # 실제 AI 서버 URL이 생기면 여기에 적으세요.
+    ai_url = "http://ai-server-ip:8000/analyze" 
     
+    payload = {
+        "diary_id": db_diary.diary_id,
+        "content": db_diary.content
+    }
+    
+    # 지금은 실제 전송은 주석 처리하고 로그만 찍습니다.
+    # try:
+    #     requests.post(ai_url, json=payload, timeout=1)
+    # except Exception as e:
+    #     print(f"AI 요청 실패: {e}")
+        
+    print(f"🚀 [To AI Server] 일기(ID: {db_diary.diary_id}) 분석 요청 전송! (내용: {db_diary.content[:10]}...)")
+
     return db_diary
 
 # 2. 일기 상세 조회 (관계 데이터 포함)

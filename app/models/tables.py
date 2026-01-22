@@ -78,7 +78,7 @@ class EmotionAnalysis(SQLModel, table=True):
     emotion_probs: dict = Field(sa_column=Column(JSON))
     primary_emotion: str = Field(max_length=20)
     primary_score: float = Field()
-    mbi_category: str = Field(max_length=10)
+    mbi_category: str = Field(default="NONE", max_length=10)
     created_at: datetime = Field(default_factory=datetime.now)
 
     diary: Optional[Diary] = Relationship(back_populates="emotion_analysis")

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlmodel import SQLModel
 from pydantic import model_validator # [중요] 여기서 가져옴
 
-# --- [하위 모델] 읽기 전용 (AI 분석 결과) ---
+# --- [하위 모델] 읽기 전용 (AI 분석 결과) 조회 응답 (백엔드 -> 프론트) ---
 class EmotionAnalysisRead(SQLModel):
     primary_emotion: str
     primary_score: float
@@ -49,3 +49,17 @@ class DiaryRead(DiaryBase):
     # [관계 데이터] 없으면 null 또는 빈 리스트로 나감
     emotion_analysis: Optional[EmotionAnalysisRead] = None 
     solution_logs: List[SolutionLogRead] = []
+
+# --- AI 분석 결과 수신용 (AI 서버 -> 백엔드) ---    
+class AIAnalysisResult(SQLModel):
+    diary_id: int
+    
+    # 1) 감정 분석 결과
+    primary_emotion: str
+    primary_score: float
+    mbi_category: str
+    emotion_probs: Dict[str, Any]
+    
+    # 2) 추천 솔루션 정보
+    activity_id: int  # 솔루션 ID
+    ai_message: str   # AI 메시지

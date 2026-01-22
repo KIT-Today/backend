@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware # [필수] 이거 꼭 추가�
 from sqlmodel import SQLModel
 from database import engine
 from app.models import tables 
-from app.api import auth, user
+from app.api import auth, user, attendance
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,9 +31,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# [추가 2] 라우터 등록 (이 줄이 없으면 API가 작동 안 함!)
+# 라우터 등록 (이 줄이 없으면 API가 작동 안 함!)
 app.include_router(auth.router, prefix="/auth", tags=["auth"])       # 로그인 관련
 app.include_router(user.router, prefix="/users", tags=["users"])     # 회원 정보 관련
+app.include_router(attendance.router, prefix="/attendance", tags=["attendance"]) # 출석 정보 관련
 
 @app.get("/")
 def read_root():

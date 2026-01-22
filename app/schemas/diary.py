@@ -51,6 +51,12 @@ class DiaryRead(DiaryBase):
     solution_logs: List[SolutionLogRead] = []
 
 # --- AI 분석 결과 수신용 (AI 서버 -> 백엔드) ---    
+# 추천 솔루션 하나하나를 정의하는 작은 모델
+class AIRecommendation(SQLModel):
+    activity_id: int  # 솔루션 ID
+    ai_message: str   # AI 메시지
+
+# 전체 결과 (리스트로 받도록 변경)
 class AIAnalysisResult(SQLModel):
     diary_id: int
     
@@ -61,5 +67,4 @@ class AIAnalysisResult(SQLModel):
     emotion_probs: Dict[str, Any]
     
     # 2) 추천 솔루션 정보
-    activity_id: int  # 솔루션 ID
-    ai_message: str   # AI 메시지
+    recommendations: List[AIRecommendation]

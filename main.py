@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware # [필수] 이거 꼭 추가�
 from sqlmodel import SQLModel
 from database import engine
 from app.models import tables 
-from app.api import auth, user, attendance, diary
+from app.api import auth, user, attendance, diary, solution
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,6 +36,7 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])       # 로그인
 app.include_router(user.router, prefix="/users", tags=["users"])     # 회원 정보 관련
 app.include_router(attendance.router, prefix="/attendance", tags=["attendance"]) # 출석 정보 관련
 app.include_router(diary.router, prefix="/diaries", tags=["diaries"]) # 일기 관련
+app.include_router(solution.router, prefix="/solutions", tags=["solutions"]) # 솔루션 관련
 
 @app.get("/")
 def read_root():

@@ -132,17 +132,18 @@ def receive_ai_result(
 
   
     # [B] 솔루션 저장 
-    # (1) 저장: 스키마와 테이블 이름이 같아서 아주 깔끔합니다.
-    new_solution = SolutionLog(
-        diary_id=diary.diary_id,
-        activity_id=result.activity_id, # DB 컬럼 = 스키마 필드
-        ai_message=result.ai_message,   # DB 컬럼 = 스키마 필드
-        is_selected=False,
-        is_completed=False
-    )
-    db.add(new_solution)
+    # (1) 저장: 리스트(recommendations)를 하나씩 꺼내서 저장
+    for rec in result.recommendations:
+        new_solution = SolutionLog(
+            diary_id=diary.diary_id,
+            activity_id=rec.activity_id, # 리스트 안에 있는 id
+            ai_message=rec.ai_message,   # 리스트 안에 있는 message
+            is_selected=False,
+            is_completed=False
+        )
+        db.add(new_solution)
     
-    # 최종 저장
+    # 최종 저장 (한 번만 하면 됨)
     db.commit()
     
-    return {"msg": "Analysis & Solution saved successfully"}
+    return {"msg": "Analysis & Solutions saved successfully"}

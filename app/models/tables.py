@@ -55,6 +55,7 @@ class Diary(SQLModel, table=True):
     keywords: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     input_type: str = Field(max_length=10)
     created_at: datetime = Field(default_factory=datetime.now)
+    image_url: Optional[str] = Field(default=None, max_length=512)
 
     user: Optional[User] = Relationship(back_populates="diaries")
   

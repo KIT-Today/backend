@@ -44,6 +44,7 @@ class DiaryUpdate(SQLModel):
 class DiaryRead(DiaryBase):
     diary_id: int
     user_id: int
+    image_url: Optional[str] = None 
     created_at: datetime
     
     # [관계 데이터] 없으면 null 또는 빈 리스트로 나감

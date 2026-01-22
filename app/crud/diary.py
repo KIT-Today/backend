@@ -6,14 +6,15 @@ from sqlalchemy.orm import selectinload
 from app.models.tables import Diary
 from app.schemas.diary import DiaryCreate, DiaryUpdate
 from app.crud.attendance import create_attendance # 이미 만든 출석 함수
+from app.services.s3_service import delete_image_from_s3
 
 from typing import Optional
 from datetime import datetime
 
 # 1. 일기 생성 (+ 출석 체크 + AI 분석 트리거 위치)
-def create_diary(db: Session, diary_in: DiaryCreate, user_id: int) -> Diary:
+def create_diary(db: Session, diary_in: DiaryCreate, user_id: int, image_url: Optional[str] = None) -> Diary:
     # (1) DB 저장
-    db_diary = Diary.model_validate(diary_in, update={"user_id": user_id})
+    db_diary = Diary.model_validate(diary_in, update={"user_id": user_id, "image_url": image_url})
     db.add(db_diary)
     db.commit()
     db.refresh(db_diary)
@@ -119,6 +120,10 @@ def update_diary(db: Session, diary_id: int, diary_in: DiaryUpdate, user_id: int
 # 5. 일기 삭제 (연쇄 삭제)
 def delete_diary(db: Session, diary_id: int, user_id: int):
     db_diary = get_diary(db, diary_id, user_id)
+
+    # S3에 이미지가 있다면 삭제
+    if db_diary.image_url:
+        delete_image_from_s3(db_diary.image_url)
     
     # DB 모델에 cascade="all, delete-orphan"이 걸려 있으므로
     # 부모(Diary)만 지우면 자식(Emotion, Solution)도 자동 삭제됨

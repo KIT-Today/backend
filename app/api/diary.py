@@ -1,6 +1,9 @@
 # 1. FastAPI 관련 도구들
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Path
+import json
+from fastapi import UploadFile, File, Form # 추가
+from app.services.s3_service import upload_image_to_s3
 
 # 2. DB 관련 도구들
 from sqlmodel import Session, func, select # func, select 꼭 필요함!
@@ -21,17 +24,34 @@ from app.crud import diary as crud_diary
 
 router = APIRouter()
 
-# 1. 일기 등록 (POST /diaries/)
 @router.post("/", response_model=DiaryRead)
 def create_diary(
-    diary_in: DiaryCreate,
+    # JSON 대신 Form과 File을 사용합니다.
+    input_type: str = Form(...),
+    content: Optional[str] = Form(None),
+    keywords_json: Optional[str] = Form(None), # JSON 문자열로 받아 처리
+    image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
+    # 1. 이미지 업로드 처리
+    image_url = None
+    if image:
+        image_url = upload_image_to_s3(image)
+
+    # 2. 키워드 JSON 파싱
+    keywords = json.loads(keywords_json) if keywords_json else None
+
+    # 3. DiaryCreate 객체 생성 및 검증
+    diary_in = DiaryCreate(input_type=input_type, content=content, keywords=keywords)
+
     """
     일기를 등록합니다. (자동으로 출석 처리됨)
     """
-    return crud_diary.create_diary(db, diary_in, current_user.user_id)
+    
+    return crud_diary.create_diary(db, diary_in, current_user.user_id, image_url)
+
+
 
 # 2. 일기 목록 조회 (GET /diaries/)
 @router.get("/", response_model=List[DiaryRead])

@@ -22,11 +22,12 @@ class User(SQLModel, table=True):
     fcm_token: Optional[str] = Field(default=None, max_length=512)
     is_push_enabled: bool = Field(default=True)
 
-    # 관계 설정
-    diaries: List["Diary"] = Relationship(back_populates="user")
-    attendances: List["Attendance"] = Relationship(back_populates="user")
-    achievements: List["Achievement"] = Relationship(back_populates="user")
-    preference: Optional["UserPreference"] = Relationship(back_populates="user")
+    # 관계 설정 (cascade 옵션 추가)
+    diaries: List["Diary"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    attendances: List["Attendance"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    achievements: List["Achievement"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    preference: Optional["UserPreference"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    notification_logs: List["NotificationLog"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # 2. UserPreferences (취향)
 class UserPreference(SQLModel, table=True):
@@ -56,8 +57,16 @@ class Diary(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
     user: Optional[User] = Relationship(back_populates="diaries")
-    emotion_analysis: Optional["EmotionAnalysis"] = Relationship(back_populates="diary")
-    solution_logs: List["SolutionLog"] = Relationship(back_populates="diary")
+  
+    emotion_analysis: Optional["EmotionAnalysis"] = Relationship(
+        back_populates="diary", 
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+
+    solution_logs: List["SolutionLog"] = Relationship(
+        back_populates="diary", 
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 # 4. EmotionAnalysis (감정 분석)
 class EmotionAnalysis(SQLModel, table=True):
@@ -85,6 +94,9 @@ class Activity(SQLModel, table=True):
     is_active: bool = Field(default=False)
     is_outdoor: bool = Field(default=False)
     is_social: bool = Field(default=False)
+
+# "지금 이 솔루션을 사용자에게 추천해도 되는가?" (운영 관리용)
+    is_enabled: bool = Field(default=True)
 
 # 6. SolutionLogs (솔루션 기록)
 class SolutionLog(SQLModel, table=True):
@@ -166,3 +178,5 @@ class NotificationLog(SQLModel, table=True):
     sent_at: datetime = Field(default_factory=datetime.now)
     
     msg_id: Optional[int] = Field(default=None, foreign_key="push_messages.msg_id")
+
+    user: Optional[User] = Relationship(back_populates="notification_logs")

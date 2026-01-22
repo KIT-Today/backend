@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
-from app.models.tables import User
-from app.schemas.user import UserCreate
+from app.models.tables import User, UserPreference
+from app.schemas.user import UserCreate, UserPreferenceUpdate, UserInfoUpdate
 from app.core.security import get_password_hash
 
 # 1. 이메일로 유저 찾기 (중복 가입 방지 & 로그인 시 사용)
@@ -41,3 +41,75 @@ def create_sns_user(db: Session, email: str, nickname: str, provider: str, provi
     db.commit()
     db.refresh(db_user)
     return db_user
+
+# 4. 🎨 취향 정보 등록 및 수정 (Upsert 패턴)
+def create_or_update_preference(session: Session, user_id: int, pref_in: UserPreferenceUpdate):
+    """
+    사용자의 취향 정보를 등록하거나 수정합니다.
+    이미 정보가 있으면 수정(Update), 없으면 새로 등록(Insert) 합니다.
+    """
+    # 1. 이 유저의 취향 정보가 이미 있는지 확인
+    statement = select(UserPreference).where(UserPreference.user_id == user_id)
+    preference = session.exec(statement).first()
+
+    if not preference:
+        # [CASE 1] 없음 -> 새로 만들기 (Create)
+        preference = UserPreference(user_id=user_id, **pref_in.dict())
+        session.add(preference)
+    else:
+        # [CASE 2] 있음 -> 기존 내용 수정하기 (Update)
+        preference.is_active = pref_in.is_active
+        preference.is_outdoor = pref_in.is_outdoor
+        preference.is_social = pref_in.is_social
+        preference.preferred_tags = pref_in.preferred_tags
+        session.add(preference)
+        
+    session.commit()
+    session.refresh(preference) # DB에 저장된 최신 값을 다시 불러옴
+    return preference
+
+# 5. ⚙️ 기본 정보 수정 (닉네임, 알림 설정) + 토큰 삭제 로직
+def update_user_info(session: Session, user_id: int, user_in: UserInfoUpdate):
+    """
+    사용자의 닉네임이나 알림 설정을 수정합니다.
+    알림 설정을 끄면(False), FCM 토큰도 함께 삭제합니다.
+    """
+    user = session.get(User, user_id)
+    if not user:
+        return None
+
+    # 1. 닉네임 수정 요청이 들어왔다면 변경
+    if user_in.nickname is not None:
+        user.nickname = user_in.nickname
+    
+    # 2. 알림 설정 수정 요청이 들어왔다면 변경
+    if user_in.is_push_enabled is not None:
+        user.is_push_enabled = user_in.is_push_enabled
+        
+        # 🚨 [중요 로직] 알림을 껐다면(False), 토큰도 삭제(NULL)
+        if user_in.is_push_enabled is False:
+            user.fcm_token = None
+
+    # 3. 토큰 갱신 로직 (알림 다시 켤 때 사용)
+    # 프론트엔드가 토큰을 같이 보내줬다면, 그 값으로 업데이트합니다.
+    if user_in.fcm_token is not None:
+        user.fcm_token = user_in.fcm_token        
+            
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+# 6. 🗑️ 회원 탈퇴 (삭제)
+def delete_user(session: Session, user_id: int):
+    """
+    사용자 계정을 삭제합니다.
+    Models에서 설정한 cascade 옵션 덕분에, 
+    이 유저가 쓴 일기, 취향 정보 등이 자동으로 같이 삭제됩니다.
+    """
+    user = session.get(User, user_id)
+    if user:
+        session.delete(user)
+        session.commit()
+        return True
+    return False

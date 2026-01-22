@@ -11,7 +11,7 @@ from app.api.deps import get_current_user
 from app.models.tables import User
 
 # 주소 앞에 /auth가 자동으로 붙습니다. (예: /auth/signup)
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter()
 
 # 1. 📝 수동 회원가입 (Local Sign-up)
 @router.post("/signup", response_model=TokenResponse, status_code=201)

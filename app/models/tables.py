@@ -49,12 +49,12 @@ class Diary(SQLModel, table=True):
     __tablename__ = "diaries"
 
     diary_id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="users.user_id")
+    user_id: int = Field(foreign_key="users.user_id", index=True)
     
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
     keywords: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     input_type: str = Field(max_length=10)
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
     image_url: Optional[str] = Field(default=None, max_length=512)
 
     user: Optional[User] = Relationship(back_populates="diaries")
@@ -74,7 +74,7 @@ class EmotionAnalysis(SQLModel, table=True):
     __tablename__ = "emotion_analysis"
 
     analysis_id: Optional[int] = Field(default=None, primary_key=True)
-    diary_id: int = Field(foreign_key="diaries.diary_id")
+    diary_id: int = Field(foreign_key="diaries.diary_id", index=True)
     
     emotion_probs: dict = Field(sa_column=Column(JSON))
     primary_emotion: str = Field(max_length=20)
@@ -104,7 +104,7 @@ class SolutionLog(SQLModel, table=True):
     __tablename__ = "solution_logs"
 
     log_id: Optional[int] = Field(default=None, primary_key=True)
-    diary_id: int = Field(foreign_key="diaries.diary_id")
+    diary_id: int = Field(foreign_key="diaries.diary_id", index=True)
     activity_id: int = Field(foreign_key="activities.activity_id")
     
     ai_message: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -125,8 +125,8 @@ class Attendance(SQLModel, table=True):
     )
 
     att_id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="users.user_id")
-    att_date: date = Field(default_factory=date.today)
+    user_id: int = Field(foreign_key="users.user_id", index=True)
+    att_date: date = Field(default_factory=date.today, index=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
     user: Optional[User] = Relationship(back_populates="attendances")

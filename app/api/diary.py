@@ -1,9 +1,11 @@
 # 1. FastAPI 관련 도구들
+import anyio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Path
 import json
-from fastapi import UploadFile, File, Form, HTTPException # 추가
+from fastapi import UploadFile, File, Form, HTTPException, BackgroundTasks # 추가
 from app.services.s3_service import upload_image_to_s3, delete_image_from_s3
+from app.services.ai_services import request_diary_analysis
 
 # 2. DB 관련 도구들
 from sqlmodel import Session, func, select # func, select 꼭 필요함!
@@ -26,31 +28,35 @@ router = APIRouter()
 
 # 1. 일기 등록 
 @router.post("/", response_model=DiaryRead)
-def create_diary(
-    # JSON 대신 Form과 File을 사용합니다.
+async def create_diary(
+    background_tasks: BackgroundTasks,
     input_type: str = Form(...),
     content: Optional[str] = Form(None),
-    keywords_json: Optional[str] = Form(None), # JSON 문자열로 받아 처리
+    keywords_json: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. 이미지 업로드 처리
+    # 📸 이미지 업로드 처리
     image_url = None
     if image:
-        image_url = upload_image_to_s3(image)
+        image_url = await anyio.to_thread.run_sync(upload_image_to_s3, image)
 
-    # 2. 키워드 JSON 파싱
+    # 🔍 키워드 JSON 파싱
     keywords = json.loads(keywords_json) if keywords_json else None
 
-    # 3. DiaryCreate 객체 생성 및 검증
+    # 📝 일기 데이터 생성 및 검증
     diary_in = DiaryCreate(input_type=input_type, content=content, keywords=keywords)
-
-    """
-    일기를 등록합니다. (자동으로 출석 처리됨)
-    """
     
-    return crud_diary.create_diary(db, diary_in, current_user.user_id, image_url)
+    # 💾 DB 저장 및 출석 체크 (통합 트랜잭션 수행)
+    db_diary = crud_diary.create_diary(db, diary_in, current_user.user_id, image_url)
+
+    # 🚀 AI 분석 백그라운드 작업 예약
+    analysis_input = db_diary.content or str(db_diary.keywords)
+    if analysis_input:
+        background_tasks.add_task(request_diary_analysis, db_diary.diary_id, analysis_input)
+
+    return db_diary
 
 
 
@@ -92,10 +98,11 @@ def read_diary(
     """
     return crud_diary.get_diary(db, diary_id, current_user.user_id)
 
-# 4. 일기 수정 (PATCH /diaries/{diary_id})
+# 4. 일기 수정 
 @router.patch("/{diary_id}", response_model=DiaryRead)
-def update_diary(
+async def update_diary(
     diary_id: int,
+    background_tasks: BackgroundTasks,
     input_type: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     keywords_json: Optional[str] = Form(None),
@@ -103,48 +110,44 @@ def update_diary(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    일기 내용을 수정합니다. (사진 교체 포함, 보낸 필드만 수정됨)
-    """
-    # 1. 기존 데이터 조회 (내 일기가 맞는지 확인)
+    # 1. 기존 데이터 조회
     db_diary = crud_diary.get_diary(db, diary_id, current_user.user_id)
     new_image_url = db_diary.image_url
 
-    # 2. 📸 사진 처리 로직
+    # 2. 📸 사진 교체 처리
     if image:
-        # 기존에 등록된 사진이 있다면 S3에서 먼저 삭제하여 용량 절약
         if db_diary.image_url:
-            delete_image_from_s3(db_diary.image_url)
-        # 새로운 사진 S3 업로드 후 새 URL 획득
-        new_image_url = upload_image_to_s3(image)
+            # 기존 이미지 삭제 (네트워크 작업이므로 스레드 활용)
+            await anyio.to_thread.run_sync(delete_image_from_s3, db_diary.image_url)
+        # 새 이미지 업로드
+        new_image_url = await anyio.to_thread.run_sync(upload_image_to_s3, image)
 
     # 3. 🔍 키워드 JSON 안전하게 파싱
     keywords = None
     if keywords_json:
         try:
-            # 문자열 형태인 키워드를 파이썬 딕셔너리로 변환
             keywords = json.loads(keywords_json)
         except json.JSONDecodeError:
-            # 🚨 잘못된 형식이 들어오면 500 에러 대신 친절한 400 에러를 반환
-            raise HTTPException(
-                status_code=400, 
-                detail="keywords_json 형식이 올바르지 않습니다. {'key': 'value'} 형식의 JSON 문자열이어야 합니다."
-            )
+            raise HTTPException(status_code=400, detail="keywords_json 형식이 올바르지 않습니다.")
 
-    # 4. 수정 객체 생성 (이때 input_type, content 등이 None이면 CRUD에서 제외됨)
-    diary_in = DiaryUpdate(
-        input_type=input_type,
-        content=content,
-        keywords=keywords
-    )
+    # 4. 수정 객체 생성
+    diary_in = DiaryUpdate(input_type=input_type, content=content, keywords=keywords)
     
-    # 5. DB 업데이트 실행
-    return crud_diary.update_diary_with_image(db, db_diary, diary_in, new_image_url)
+    # 5. 💾 DB 업데이트 (변경된 필드만 반영 및 변경 여부 수신)
+    updated_diary, is_changed = crud_diary.update_diary_with_image(db, db_diary, diary_in, new_image_url)
+
+    # 6. 🚀 내용이 실제로 바뀌었을 때만 AI 재분석 요청 (사진만 바뀐 경우 패스)
+    if is_changed:
+        analysis_input = updated_diary.content or str(updated_diary.keywords)
+        background_tasks.add_task(request_diary_analysis, updated_diary.diary_id, analysis_input)
+        print(f"🔄 일기 {updated_diary.diary_id} 내용 변경됨 -> AI 분석 요청 전송")
+
+    return updated_diary
 
 
 # 5. 일기 삭제 (DELETE /diaries/{diary_id})
 @router.delete("/{diary_id}")
-def delete_diary(
+async def delete_diary(
     diary_id: int = Path(..., description="삭제할 일기 ID"),
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -152,7 +155,8 @@ def delete_diary(
     """
     일기를 삭제합니다. 연관된 분석 데이터도 함께 삭제됩니다.
     """
-    return crud_diary.delete_diary(db, diary_id, current_user.user_id)
+    # crud 내부의 S3 삭제 작업을 스레드 풀로 보냅니다.
+    return await anyio.to_thread.run_sync(crud_diary.delete_diary, db, diary_id, current_user.user_id)
 
 # 6. AI가 분석 끝나면 호출할 콜백 API
 @router.post("/analysis-callback")
@@ -208,14 +212,14 @@ def receive_ai_result(
 
 # 7. 사진만 삭제하는 기능
 @router.delete("/{diary_id}/image")
-def delete_diary_photo(
+async def delete_diary_photo(
     diary_id: int,
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     db_diary = crud_diary.get_diary(db, diary_id, current_user.user_id)
     if db_diary.image_url:
-        delete_image_from_s3(db_diary.image_url) # 👈 상단 임포트 덕분에 작동합니다.
+        await anyio.to_thread.run_sync(delete_image_from_s3, db_diary.image_url)
         db_diary.image_url = None 
         db.add(db_diary)
         db.commit()

@@ -46,10 +46,19 @@ class DiaryRead(DiaryBase):
     user_id: int
     image_url: Optional[str] = None 
     created_at: datetime
+
+    # [추가] 분석 결과가 존재하는지 여부를 프론트가 쉽게 알게 함 -- 이거 추가함
+    is_analyzed: bool = False
     
     # [관계 데이터] 없으면 null 또는 빈 리스트로 나감
     emotion_analysis: Optional[EmotionAnalysisRead] = None 
     solution_logs: List[SolutionLogRead] = []
+
+    # SQLModel 객체를 넘길 때 분석 데이터가 있으면 True로 설정하는 로직 -- 이거 추가함
+    @model_validator(mode='after')
+    def set_analyzed_status(self):
+        self.is_analyzed = self.emotion_analysis is not None
+        return self
 
 # --- AI 분석 결과 수신용 (AI 서버 -> 백엔드) ---    
 # 추천 솔루션 하나하나를 정의하는 작은 모델

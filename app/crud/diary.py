@@ -1,9 +1,9 @@
 # app/crud/diary.py
 from fastapi import HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 from sqlalchemy.orm import selectinload
 
-from app.models.tables import Diary
+from app.models.tables import Diary, EmotionAnalysis, SolutionLog
 from app.schemas.diary import DiaryCreate, DiaryUpdate
 from app.crud.attendance import create_attendance # 이미 만든 출석 함수
 from app.services.s3_service import delete_image_from_s3
@@ -13,35 +13,30 @@ from datetime import datetime
 
 # 1. 일기 생성 (+ 출석 체크 + AI 분석 트리거 위치)
 def create_diary(db: Session, diary_in: DiaryCreate, user_id: int, image_url: Optional[str] = None) -> Diary:
-    # (1) DB 저장
-    db_diary = Diary.model_validate(diary_in, update={"user_id": user_id, "image_url": image_url})
-    db.add(db_diary)
-    db.commit()
-    db.refresh(db_diary)
-
-    # (2) 출석 체크 (일기 저장 성공 시에만)
     try:
+        # 1. 일기 데이터를 프론트가 넘겨준 db에 담습니다.
+        db_diary = Diary.model_validate(diary_in, update={"user_id": user_id, "image_url": image_url})
+        db.add(db_diary)
+
+        # 2. 출석 데이터도 같은 db에 담습니다. 
+        # (create_attendance 함수 내부에서도 같은 db 세션을 써야 합니다!)
         create_attendance(db, user_id=user_id)
-    except Exception as e:
-        print(f"⚠️ 출석 처리 중 오류 (일기는 저장됨): {e}")
 
-    # (3) [AI 서버로 분석 요청 보내기]
-    # 실제 AI 서버 URL이 생기면 여기에 적으세요.
-    ai_url = "http://ai-server-ip:8000/analyze" 
-    
-    payload = {
-        "diary_id": db_diary.diary_id,
-        "content": db_diary.content
-    }
-    
-    # 지금은 실제 전송은 주석 처리하고 로그만 찍습니다.
-    # try:
-    #     requests.post(ai_url, json=payload, timeout=1)
-    # except Exception as e:
-    #     print(f"AI 요청 실패: {e}")
+        # 3. [중요] 여기서 딱 한 번만 (Commit)! 
+        # 이제서야 실제 DB에 일기와 출석이 동시에 기록됩니다.
+        db.commit()
         
-    print(f"🚀 [To AI Server] 일기(ID: {db_diary.diary_id}) 분석 요청 전송! (내용: {db_diary.content[:10]}...)")
+        # 4. 저장된 정보를 다시 확인합니다.
+        db.refresh(db_diary)
+        
+    except Exception as e:
+        # 5. 장바구니에 담다가 하나라도 문제가 생기면 (예: 출석체크 에러)
+        # 담았던 것들을 전부 비워버리고(Rollback) 실제 DB에는 아무것도 남기지 않습니다.
+        db.rollback()
+        print(f"🚨 DB 처리 중 오류 발생: {e}")
+        raise HTTPException(status_code=500, detail="일기 저장 및 출석 처리 중 오류가 발생했습니다.")
 
+# (주의) AI 분석 요청은 여기서 하지 않고, api/diary.py 라우터에서 BackgroundTasks로 수행합니다.
     return db_diary
 
 # 2. 일기 상세 조회 (관계 데이터 포함)
@@ -108,23 +103,35 @@ def update_diary_with_image(
     db_diary: Diary, 
     diary_in: DiaryUpdate, 
     image_url: Optional[str]
-) -> Diary:
+) -> tuple[Diary, bool]: # 변경 여부를 알려주기 위해 튜플 반환
     """
-    이미 조회된 db_diary 객체를 받아 내용을 수정합니다.
+    전달받은 필드들만 골라서 업데이트하고, 내용 변경 여부를 반환합니다.
     """
-    # 1. 전달받은 필드들만 골라서 업데이트 (input_type, content, keywords 등)
+    # (1) 내용이나 키워드가 실제로 바뀌었는지 확인 (AI 재분석 필요성 판단) - 이미지는 변경만!
+    is_content_changed = False
+    if (diary_in.content is not None and diary_in.content != db_diary.content) or \
+       (diary_in.keywords is not None and diary_in.keywords != db_diary.keywords):
+        is_content_changed = True
+
+    # (2) 내용이 바뀌었다면 기존의 감정 분석과 솔루션 로그를 삭제 (데이터 정합성)
+    if is_content_changed:
+        db.exec(delete(EmotionAnalysis).where(EmotionAnalysis.diary_id == db_diary.diary_id))
+        db.exec(delete(SolutionLog).where(SolutionLog.diary_id == db_diary.diary_id))
+
+    # (3) [사용자님이 찾으시던 기능] 전달받은 필드들만 골라서 업데이트
+    # exclude_unset=True: 프론트에서 실제로 보내온 필드만 딕셔너리로 만듦
     update_data = diary_in.model_dump(exclude_unset=True, exclude_none=True)
     for key, value in update_data.items():
         setattr(db_diary, key, value)
     
-    # 2. 새로운 이미지 URL 반영 (null일 수도 있고, 기존과 같을 수도 있음)
+    # (4) 이미지 URL 반영
     db_diary.image_url = image_url
     
-    # 3. DB 저장
+    # (5) DB 저장
     db.add(db_diary)
     db.commit()
-    db.refresh(db_diary)
-    return db_diary
+    
+    return db_diary, is_content_changed
 
 # 5. 일기 삭제 (연쇄 삭제)
 def delete_diary(db: Session, diary_id: int, user_id: int):

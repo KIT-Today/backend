@@ -1,3 +1,4 @@
+# app/api/solution.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.api.deps import get_current_user

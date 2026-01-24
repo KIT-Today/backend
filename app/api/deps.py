@@ -1,3 +1,4 @@
+# app/api/deps.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # [변경] 도구 변경
 from sqlmodel import Session

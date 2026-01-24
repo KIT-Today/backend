@@ -1,3 +1,4 @@
+# app/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from database import get_session

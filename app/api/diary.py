@@ -181,8 +181,10 @@ def receive_ai_result(
     diary_count = db.exec(count_statement).one()
 
     final_mbi = result.mbi_category
+    
+    # [수정 1] 데이터 부족 시 번아웃 결과를 NONE으로 덮어쓰기
     if diary_count < 3:
-        final_mbi = "NONE" # 데이터 부족 시 NONE으로 덮어쓰기
+        final_mbi = "NONE" 
 
     emotion = EmotionAnalysis(
         diary_id=diary.diary_id,
@@ -193,18 +195,21 @@ def receive_ai_result(
     )
     db.add(emotion)
 
-  
     # [B] 솔루션 저장 
-    # (1) 저장: 리스트(recommendations)를 하나씩 꺼내서 저장
-    for rec in result.recommendations:
-        new_solution = SolutionLog(
-            diary_id=diary.diary_id,
-            activity_id=rec.activity_id, # 리스트 안에 있는 id
-            ai_message=rec.ai_message,   # 리스트 안에 있는 message
-            is_selected=False,
-            is_completed=False
-        )
-        db.add(new_solution)
+    # [수정 2] 일기가 3개 이상일 때만 솔루션(행동)을 저장합니다. (3개 미만이면 아예 저장 안 함)
+    if diary_count >= 3:
+        for rec in result.recommendations:
+            new_solution = SolutionLog(
+                diary_id=diary.diary_id,
+                activity_id=rec.activity_id, # 리스트 안에 있는 id
+                ai_message=rec.ai_message,   # 리스트 안에 있는 message
+                is_selected=False,
+                is_completed=False
+            )
+            db.add(new_solution)
+        print(f"✅ 솔루션 저장 완료 (일기 개수: {diary_count}개)")
+    else:
+        print(f"ℹ️ 일기 데이터 부족({diary_count}개)으로 솔루션 저장을 건너뜁니다.")
     
     # 최종 저장 (한 번만 하면 됨)
     db.commit()

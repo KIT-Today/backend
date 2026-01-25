@@ -1,6 +1,5 @@
-# app/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
+from sqlalchemy.ext.asyncio import AsyncSession # [변경]
 from database import get_session
 import requests
 
@@ -16,14 +15,14 @@ router = APIRouter()
 
 # 1. 📝 수동 회원가입 (Local Sign-up)
 @router.post("/signup", response_model=TokenResponse, status_code=201)
-def signup(user_in: UserCreate, db: Session = Depends(get_session)):
+async def signup(user_in: UserCreate, db: AsyncSession = Depends(get_session)): # [변경] async, AsyncSession
     # 1-1. 이미 가입된 이메일인지 확인
-    user = crud_user.get_user_by_email(db, email=user_in.email)
+    user = await crud_user.get_user_by_email(db, email=user_in.email) # [변경] await
     if user:
         raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
     
     # 1-2. 가입 진행 (DB 저장)
-    new_user = crud_user.create_user(db, user_in)
+    new_user = await crud_user.create_user(db, user_in) # [변경] await
     
     # 1-3. 우리 앱 전용 토큰 발급
     access_token = create_access_token({"user_id": new_user.user_id})
@@ -39,9 +38,9 @@ def signup(user_in: UserCreate, db: Session = Depends(get_session)):
 
 # 2. 🔐 수동 로그인 (Local Login)
 @router.post("/login", response_model=TokenResponse)
-def login(user_in: UserLogin, db: Session = Depends(get_session)):
+async def login(user_in: UserLogin, db: AsyncSession = Depends(get_session)): # [변경] async
     # 2-1. 이메일로 유저 찾기
-    user = crud_user.get_user_by_email(db, email=user_in.email)
+    user = await crud_user.get_user_by_email(db, email=user_in.email) # [변경] await
     if not user:
         raise HTTPException(status_code=401, detail="존재하지 않는 사용자입니다.")
     
@@ -62,7 +61,7 @@ def login(user_in: UserLogin, db: Session = Depends(get_session)):
 
 # 3. 🌏 카카오 로그인 (Kakao Login)
 @router.post("/kakao", response_model=TokenResponse)
-def kakao_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
+async def kakao_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session)): # [변경] async
     # 3-1. 프론트가 준 토큰으로 카카오 서버에 "이 사람 누구야?" 물어보기
     kakao_user_url = "https://kapi.kakao.com/v2/user/me"
     headers = {"Authorization": f"Bearer {sns_in.token}"}
@@ -85,11 +84,11 @@ def kakao_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail="카카오 계정에 이메일 정보가 없습니다. (동의 항목 확인 필요)")
 
     # 3-3. 우리 DB에 이메일이 있는지 확인
-    user = crud_user.get_user_by_email(db, email=email)
+    user = await crud_user.get_user_by_email(db, email=email) # [변경] await
     
     if not user:
         # [Case A] 신규 유저 -> 자동 회원가입
-        user = crud_user.create_sns_user(db, email, nickname, "KAKAO", kakao_id)
+        user = await crud_user.create_sns_user(db, email, nickname, "KAKAO", kakao_id) # [변경] await
     else:
         # [Case B] 기존 유저 -> 로그인 (필요 시 여기서 정보 업데이트 로직 추가 가능)
         pass
@@ -107,7 +106,7 @@ def kakao_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
 
 # 4. 🌏 구글 로그인 (Google Login)
 @router.post("/google", response_model=TokenResponse)
-def google_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
+async def google_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session)): # [변경] async
     google_user_url = "https://www.googleapis.com/oauth2/v1/userinfo"
     response = requests.get(google_user_url, params={"access_token": sns_in.token})
     
@@ -123,10 +122,10 @@ def google_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
     if not email:
         raise HTTPException(status_code=400, detail="구글 계정에 이메일 정보가 없습니다.")
 
-    user = crud_user.get_user_by_email(db, email=email)
+    user = await crud_user.get_user_by_email(db, email=email) # [변경] await
     
     if not user:
-        user = crud_user.create_sns_user(db, email, nickname, "GOOGLE", google_id)
+        user = await crud_user.create_sns_user(db, email, nickname, "GOOGLE", google_id) # [변경] await
     
     access_token = create_access_token({"user_id": user.user_id})
     
@@ -140,7 +139,7 @@ def google_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
 
 # 5. 🌏 네이버 로그인 (Naver Login)
 @router.post("/naver", response_model=TokenResponse)
-def naver_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
+async def naver_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session)): # [변경] async
     naver_user_url = "https://openapi.naver.com/v1/nid/me"
     headers = {"Authorization": f"Bearer {sns_in.token}"}
     
@@ -162,10 +161,10 @@ def naver_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
     if not email:
         raise HTTPException(status_code=400, detail="네이버 계정에 이메일 정보가 없습니다.")
 
-    user = crud_user.get_user_by_email(db, email=email)
+    user = await crud_user.get_user_by_email(db, email=email) # [변경] await
     
     if not user:
-        user = crud_user.create_sns_user(db, email, nickname, "NAVER", naver_id)
+        user = await crud_user.create_sns_user(db, email, nickname, "NAVER", naver_id) # [변경] await
     
     access_token = create_access_token({"user_id": user.user_id})
     
@@ -178,9 +177,8 @@ def naver_login(sns_in: SNSLogin, db: Session = Depends(get_session)):
     }
 
 # 6. 🙋‍♀️ 내 정보 보기 (프로필 조회)
-# 이 기능은 앱 실행 시 '자동 로그인' 처리를 위해 필수입니다!
 @router.get("/me")
-def read_users_me(current_user: User = Depends(get_current_user)):
+async def read_users_me(current_user: User = Depends(get_current_user)): # [변경] async
     return {
         "user_id": current_user.user_id,
         "email": current_user.email,

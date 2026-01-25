@@ -1,10 +1,10 @@
-# app/sercices/notification.py
 from datetime import date, datetime
-from sqlmodel import Session, select
+from sqlalchemy.ext.asyncio import AsyncSession # [변경]
+from sqlmodel import select
 from app.models.tables import User, PushMessage, NotificationLog
 from app.core.fcm import send_fcm_notification
 
-def check_and_send_inactivity_alarms(db: Session):
+async def check_and_send_inactivity_alarms(db: AsyncSession): # [변경] async
     """
     모든 유저를 검사해서 3일, 7일, 30일 미접속자에게 알림을 전송하고 기록합니다.
     """
@@ -17,12 +17,14 @@ def check_and_send_inactivity_alarms(db: Session):
         .where(User.fcm_token != None)
         .where(User.last_att_date != None)
     )
-    users = db.exec(statement).all()
+    # [변경] await exec
+    result = await db.exec(statement)
+    users = result.all()
     
     sent_count = 0
     
     for user in users:
-        # 2. 미접속 일수 계산 (오늘 - 마지막 출석)
+        # 2. 미접속 일수 계산
         diff_days = (today - user.last_att_date).days
         
         target_msg_id = None
@@ -39,26 +41,25 @@ def check_and_send_inactivity_alarms(db: Session):
             target_msg_id = 3
             alert_type = "30_DAYS_INACTIVE"
         
-        # 해당되는 날짜가 아니면 다음 사람으로 넘어감
         if target_msg_id is None:
             continue
 
         # 4. 보낼 메시지 내용 가져오기
-        push_msg = db.get(PushMessage, target_msg_id)
+        push_msg = await db.get(PushMessage, target_msg_id) # [변경] await get
         if not push_msg:
             continue
 
-        # [수정된 부분] 진짜 FCM 보내기!
+        # FCM 전송 (이 함수는 보통 동기지만, 보내놓고 기다리지 않아도 되면 됨)
+        # 네트워크 IO지만 일단 동기 호출 유지
         send_fcm_notification(
             token=user.fcm_token,
-            title="오늘도(Today)",  # 앱 이름
+            title="오늘도(Today)",
             body=push_msg.msg_content
         )
 
-        # 5. 보낸 거 서버 로그
+        # 5. 로그 저장
         print(f"🚀 [PUSH] To: {user.nickname} | Msg: {push_msg.msg_content}")
 
-        # 6. 로그 저장 (NotificationLogs)
         new_log = NotificationLog(
             user_id=user.user_id,
             msg_id=push_msg.msg_id,
@@ -69,5 +70,5 @@ def check_and_send_inactivity_alarms(db: Session):
         db.add(new_log)
         sent_count += 1
 
-    db.commit()
+    await db.commit() # [변경] await commit
     return {"message": f"총 {sent_count}명에게 알림 전송 및 기록 완료"}

@@ -1,21 +1,19 @@
-# app/api/deps.py
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # [변경] 도구 변경
-from sqlmodel import Session
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession # [변경] AsyncSession 사용
 import jwt
 from app.core.security import SECRET_KEY, ALGORITHM
 from database import get_session
 from app.models.tables import User
 
-# 복잡한 로그인 방식 대신, 단순하게 "헤더에 있는 토큰"을 가져오는 방식 사용
 security = HTTPBearer()
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security), # 입력받는 방식 변경
-    db: Session = Depends(get_session)
+# [변경] async def로 선언
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_session) # [변경] AsyncSession
 ) -> User:
     
-    # 토큰 문자열만 쏙 꺼냅니다. (Bearer 글자 제외됨)
     token = credentials.credentials
     
     credentials_exception = HTTPException(
@@ -25,7 +23,6 @@ def get_current_user(
     )
 
     try:
-        # 토큰 해독 (나머지는 기존과 동일)
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: int = payload.get("user_id")
         
@@ -37,7 +34,8 @@ def get_current_user(
     except jwt.InvalidTokenError:
         raise credentials_exception
 
-    user = db.get(User, user_id)
+    # [변경] 비동기 조회 (await db.get)
+    user = await db.get(User, user_id)
     if user is None:
         raise credentials_exception
         

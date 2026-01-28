@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession # [변경]
+from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, delete
 from sqlalchemy.orm import selectinload
 

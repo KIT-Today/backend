@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession # [변경] AsyncSession 임포트
+from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from fastapi import HTTPException
 from app.models.tables import Attendance, User

@@ -2,25 +2,30 @@
 import firebase_admin
 from firebase_admin import credentials, messaging
 import os
+import anyio # [추가] 비동기 논블로킹 처리를 위한 라이브러리
 
 # 1. 파이어베이스 초기화
-# serviceAccountKey.json 파일이 main.py랑 같은 위치에 있어야 함!
 if not firebase_admin._apps:
-    # 현재 파일 위치 기준으로 상위 폴더의 serviceAccountKey.json 찾기 (경로 에러 방지용)
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     key_path = os.path.join(BASE_DIR, "serviceAccountKey.json")
     
     cred = credentials.Certificate(key_path)
     firebase_admin.initialize_app(cred)
 
-def send_fcm_notification(token: str, title: str, body: str):
+# [추가] 내부적으로만 쓸 동기 함수 (실제 전송 담당)
+def _send_fcm_sync(message):
+    return messaging.send(message)
+
+# [변경] 외부에서 호출할 비동기 함수 (async def)
+async def send_fcm_notification(token: str, title: str, body: str):
     """
-    진짜 알림을 보내는 함수 (우체부 아저씨)
+    진짜 알림을 보내는 함수 (비동기 래퍼)
     """
     if not token:
         return False
         
     try:
+        # 메시지 객체 생성
         message = messaging.Message(
             notification=messaging.Notification(
                 title=title,
@@ -28,7 +33,11 @@ def send_fcm_notification(token: str, title: str, body: str):
             ),
             token=token,
         )
-        response = messaging.send(message)
+        
+        # [핵심] 블로킹 함수(_send_fcm_sync)를 별도 스레드에서 실행하고 기다림
+        # 이렇게 해야 서버가 멈추지 않습니다.
+        response = await anyio.to_thread.run_sync(_send_fcm_sync, message)
+        
         print(f"✅ FCM 전송 성공: {response}")
         return True
     except Exception as e:

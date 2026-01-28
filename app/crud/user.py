@@ -49,7 +49,7 @@ async def create_or_update_preference(session: AsyncSession, user_id: int, pref_
     preference = result.first()
 
     if not preference:
-        preference = UserPreference(user_id=user_id, **pref_in.dict())
+        preference = UserPreference(user_id=user_id, **pref_in.model_dump())
         session.add(preference)
     else:
         preference.is_active = pref_in.is_active

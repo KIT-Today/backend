@@ -1,17 +1,22 @@
+# app/api/deps.py
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession # [변경] AsyncSession 사용
+from sqlmodel.ext.asyncio.session import AsyncSession 
 import jwt
 from app.core.security import SECRET_KEY, ALGORITHM
 from database import get_session
-from app.models.tables import User
+# [수정] User뿐만 아니라 관계된 모델(Achievement)도 로딩 옵션을 위해 필요할 수 있음
+from app.models.tables import User, Achievement 
+# [수정] 관계 데이터를 미리 로딩하기 위한 도구들
+from sqlalchemy.orm import selectinload 
+from sqlmodel import select 
 
 security = HTTPBearer()
 
-# [변경] async def로 선언
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_session) # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session)
 ) -> User:
     
     token = credentials.credentials
@@ -34,8 +39,24 @@ async def get_current_user(
     except jwt.InvalidTokenError:
         raise credentials_exception
 
-    # [변경] 비동기 조회 (await db.get)
-    user = await db.get(User, user_id)
+    # ------------------------------------------------------------------
+    # [변경 핵심] 단순히 db.get을 쓰면 관계 데이터(취향, 업적)를 못 가져옵니다.
+    # selectinload를 사용해 한 번에 묶어서 가져옵니다.
+    # ------------------------------------------------------------------
+    statement = (
+        select(User)
+        .where(User.user_id == user_id)
+        .options(
+            selectinload(User.preference),  # 취향 정보 로딩
+            # 업적을 가져오고, 그 업적에 달린 메달 정보까지 연쇄적으로 로딩
+            selectinload(User.achievements).selectinload(Achievement.medal)
+        )
+    )
+    
+    result = await db.exec(statement)
+    user = result.first()
+    # ------------------------------------------------------------------
+
     if user is None:
         raise credentials_exception
         

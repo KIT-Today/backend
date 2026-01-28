@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
+from app.models.tables import *
 
 # [수정] 비동기 스케줄러 라이브러리 사용
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

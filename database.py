@@ -1,7 +1,11 @@
 # database.py
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+# 1. 엔진 생성을 위한 도구 (SQLAlchemy)
+from sqlalchemy.ext.asyncio import create_async_engine
+# 2. 세션 생성을 위한 도구 (SQLAlchemy)
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
+# 3. 비동기 세션 객체 (반드시 SQLModel 것을 사용!)
+from sqlmodel.ext.asyncio.session import AsyncSession
+
 import os
 from dotenv import load_dotenv
 

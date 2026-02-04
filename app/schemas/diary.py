@@ -9,13 +9,25 @@ class EmotionAnalysisRead(SQLModel):
     primary_emotion: str
     primary_score: float
     mbi_category: str
+    ai_message: Optional[str] = None #프론트에게 AI메시지 전달
     emotion_probs: Dict[str, Any]
 
 class SolutionLogRead(SQLModel):
     log_id: int
-    ai_message: Optional[str]
+    activity_id: int
+    act_content: str
     is_selected: bool
     is_completed: bool
+
+    # [중요] DB 객체(SolutionLog)에서 데이터를 꺼낼 때 
+    # log.activity.act_content를 내 act_content로 옮겨담는 로직
+    @model_validator(mode='before')
+    def map_activity_content(cls, v):
+        # v가 ORM 객체(SolutionLog)인 경우
+        if hasattr(v, 'activity') and v.activity:
+            # v(SolutionLog)에 act_content 속성을 강제로 심어줌 (Pydantic이 읽을 수 있게)
+            v.act_content = v.activity.act_content
+        return v
 
 # --- [메인 모델] 일기 ---
 
@@ -65,7 +77,6 @@ class DiaryRead(DiaryBase):
 # 추천 솔루션 하나하나를 정의하는 작은 모델
 class AIRecommendation(SQLModel):
     activity_id: int  # 솔루션 ID
-    ai_message: str   # AI 메시지
 
 # 전체 결과 (리스트로 받도록 변경)
 class AIAnalysisResult(SQLModel):
@@ -76,6 +87,8 @@ class AIAnalysisResult(SQLModel):
     primary_score: float
     mbi_category: str
     emotion_probs: Dict[str, Any]
+    # AI 서버는 결과 꾸러미에 AI메시지를 담아 줍니다.
+    ai_message: str
     
     # 2) 추천 솔루션 정보
     recommendations: List[AIRecommendation]

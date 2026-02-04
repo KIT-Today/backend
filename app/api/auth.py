@@ -1,3 +1,4 @@
+# app/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession 
 from database import get_session
@@ -103,86 +104,9 @@ async def kakao_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session))
         "user_id": user.user_id,
         "email": user.email,
         "nickname": user.nickname
-    }
+    } 
 
-# 4. 🌏 구글 로그인 (Google Login)
-@router.post("/google", response_model=TokenResponse)
-async def google_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session)): 
-    google_user_url = "https://www.googleapis.com/oauth2/v1/userinfo"
-
-    # [변경]
-    async with httpx.AsyncClient() as client:
-        response = await client.get(google_user_url, params={"access_token": sns_in.token})
-    
-    if response.status_code != 200:
-        raise HTTPException(status_code=401, detail="유효하지 않은 구글 토큰입니다.")
-        
-    user_info = response.json()
-    
-    google_id = user_info.get("id")
-    email = user_info.get("email")
-    nickname = user_info.get("name", "GoogleUser")
-    
-    if not email:
-        raise HTTPException(status_code=400, detail="구글 계정에 이메일 정보가 없습니다.")
-
-    user = await crud_user.get_user_by_email(db, email=email) 
-    
-    if not user:
-        user = await crud_user.create_sns_user(db, email, nickname, "GOOGLE", google_id) 
-    
-    access_token = create_access_token({"user_id": user.user_id})
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_id": user.user_id,
-        "email": user.email,
-        "nickname": user.nickname
-    }
-
-# 5. 🌏 네이버 로그인 (Naver Login)
-@router.post("/naver", response_model=TokenResponse)
-async def naver_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session)): 
-    naver_user_url = "https://openapi.naver.com/v1/nid/me"
-    headers = {"Authorization": f"Bearer {sns_in.token}"}
-    
-    # [변경]
-    async with httpx.AsyncClient() as client:
-        response = await client.get(naver_user_url, headers=headers)
-        
-    if response.status_code != 200:
-        raise HTTPException(status_code=401, detail="유효하지 않은 네이버 토큰입니다.")
-        
-    user_info = response.json()
-    
-    naver_response = user_info.get("response")
-    if not naver_response:
-        raise HTTPException(status_code=400, detail="네이버 응답 형식이 올바르지 않습니다.")
-        
-    naver_id = naver_response.get("id")
-    email = naver_response.get("email")
-    nickname = naver_response.get("nickname", "NaverUser")
-    
-    if not email:
-        raise HTTPException(status_code=400, detail="네이버 계정에 이메일 정보가 없습니다.")
-
-    user = await crud_user.get_user_by_email(db, email=email) 
-    
-    if not user:
-        user = await crud_user.create_sns_user(db, email, nickname, "NAVER", naver_id) 
-    
-    access_token = create_access_token({"user_id": user.user_id})
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_id": user.user_id,
-        "email": user.email,
-        "nickname": user.nickname
-    }
-
-# 6. 🙋‍♀️ 내 정보 보기 (프로필 조회)
+# 4. 🙋‍♀️ 내 정보 보기 (프로필 조회)
 @router.get("/me")
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return {

@@ -40,6 +40,7 @@ class UserInfoUpdate(BaseModel):
     nickname: Optional[str] = None
     is_push_enabled: Optional[bool] = None
     fcm_token: Optional[str] = None  # 토큰도 갱신할 수 있음.
+    persona: Optional[int] = None # 페르소나 변경 가능하도록!
 
 
 # 7. 앱 처음 화면 문구 응답 전용
@@ -70,3 +71,5 @@ class UserProfileResponse(BaseModel):
     # 획득한 메달 목록과 읽지 않은 알림 여부
     achievements: List[MedalInfo] = []
     has_unread_medals: bool = False
+    # 페르소나의 정보도 제공! 
+    persona: Optional[int] = None

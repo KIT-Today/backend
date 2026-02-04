@@ -70,6 +70,10 @@ async def update_user_info(session: AsyncSession, user_id: int, user_in: UserInf
 
     if user_in.nickname is not None:
         user.nickname = user_in.nickname
+
+    # 페르소나 변경 로직
+    if user_in.persona is not None:
+        user.persona = user_in.persona
     
     if user_in.is_push_enabled is not None:
         user.is_push_enabled = user_in.is_push_enabled

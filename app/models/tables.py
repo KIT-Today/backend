@@ -23,6 +23,9 @@ class User(SQLModel, table=True):
     fcm_token: Optional[str] = Field(default=None, max_length=512)
     is_push_enabled: bool = Field(default=True)
 
+    # 페르소나 (1~5, 선택 안했으면 None)
+    persona: Optional[int] = Field(default=None)
+
     # 관계 설정 (cascade 옵션 추가)
     diaries: List["Diary"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
     attendances: List["Attendance"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
@@ -81,6 +84,9 @@ class EmotionAnalysis(SQLModel, table=True):
     primary_emotion: str = Field(max_length=20)
     primary_score: float = Field()
     mbi_category: str = Field(default="NONE", max_length=10)
+    # ai 메시지가 여기에 있어야 함.
+    ai_message: Optional[str] = Field(default=None, sa_column=Column(Text))
+
     created_at: datetime = Field(default_factory=datetime.now)
 
     diary: Optional[Diary] = Relationship(back_populates="emotion_analysis")
@@ -107,8 +113,6 @@ class SolutionLog(SQLModel, table=True):
     log_id: Optional[int] = Field(default=None, primary_key=True)
     diary_id: int = Field(foreign_key="diaries.diary_id", index=True)
     activity_id: int = Field(foreign_key="activities.activity_id")
-    
-    ai_message: Optional[str] = Field(default=None, sa_column=Column(Text))
     is_selected: bool = Field(default=False)
     is_completed: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.now)

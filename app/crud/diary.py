@@ -40,7 +40,8 @@ async def get_diary(db: AsyncSession, diary_id: int, user_id: int) -> Diary:
         .where(Diary.user_id == user_id)
         .options(
             selectinload(Diary.emotion_analysis),
-            selectinload(Diary.solution_logs)
+            # solution_logs를 가져올 때, 그 안의 activity 정보도 같이 로딩해라!
+            selectinload(Diary.solution_logs).selectinload(SolutionLog.activity)
         )
     )
     result = await db.exec(statement) # [변경] await
@@ -75,6 +76,12 @@ async def get_diaries(
             end_date = datetime(year + 1, 1, 1)
             statement = statement.where(Diary.created_at >= start_date).where(Diary.created_at < end_date)
     
+    # [수정] 목록 조회 시에도 관계 데이터를 미리 로딩해야 스키마 에러가 안 납니다!
+    statement = statement.options(
+        selectinload(Diary.emotion_analysis),
+        selectinload(Diary.solution_logs).selectinload(SolutionLog.activity)
+    )
+
     statement = statement.order_by(Diary.created_at.desc()).offset(skip).limit(limit)
     
     result = await db.exec(statement) # [변경] await

@@ -5,11 +5,12 @@ from app.crud.diary import get_recent_diaries_for_ai
 
 logger = logging.getLogger(__name__)
 
-async def request_diary_analysis(diary_id: int, user_id: int):
+async def request_diary_analysis(diary_id: int, user_id: int, persona: int):
     """
     [안전 버전] 2주치 데이터를 모아 AI 서버에 비동기로 분석을 요청합니다.
     """
-    ai_url = "http://ai-server-ip:8000/analyze"
+    # 이 주소가 아닐까? -> 확인하고 실제 주소로 변경!
+    ai_url = "http://localhost:8001/analyze"
 
     # API 응답 후에도 안전하게 실행되도록 함수 내부에서 새 세션을 생성합니다.
     async for db in get_session():
@@ -32,6 +33,7 @@ async def request_diary_analysis(diary_id: int, user_id: int):
             payload = {
                 "diary_id": diary_id,  # 타겟 일기 ID
                 "user_id": user_id,
+                "persona": persona, # AI 서버에 전달
                 "history": history_data # 2주치 전체 데이터 리스트
             }
 
@@ -39,7 +41,7 @@ async def request_diary_analysis(diary_id: int, user_id: int):
             async with httpx.AsyncClient() as client:
                 response = await client.post(ai_url, json=payload, timeout=10.0)
                 response.raise_for_status()
-                logger.info(f"✅ AI 분석 요청 성공: Diary {diary_id} (History: {len(history_data)}건)")
+                logger.info(f"✅ AI 분석 요청 성공: Diary {diary_id}, , Persona {persona} (History: {len(history_data)}건)")
             
             break # 작업 완료 후 세션 루프 탈출
 

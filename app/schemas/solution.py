@@ -12,6 +12,5 @@ class SolutionRead(SQLModel):
     log_id: int
     diary_id: int
     activity_id: int
-    ai_message: Optional[str]
     is_selected: bool
     is_completed: bool

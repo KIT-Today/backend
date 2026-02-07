@@ -23,6 +23,7 @@ async def read_my_profile( # [변경] async
     current_user: User = Depends(get_current_user)
 ):
     # 관계 데이터 로딩 문제 시 get_current_user에서 selectinload 필요할 수 있음
+    # 1. 메달 리스트 변환 (여기는 리스트 컴프리헨션이므로 기존 코드도 OK)
     medal_list = [
         MedalInfo(
             achieve_id=ach.achieve_id,
@@ -36,11 +37,19 @@ async def read_my_profile( # [변경] async
     # ✅ 안 읽은 메달이 하나라도 있는지 체크
     has_unread = any(not ach.is_read for ach in current_user.achievements)
 
+    # 2. 명시적 매핑
+    # UserProfileResponse에 from_attributes=True를 걸었으므로
+    # preference에 DB 객체를 그대로 넣어도 Pydantic이 알아서 변환해줍니다.
     return UserProfileResponse(
-        **current_user.dict(), 
-        preference=current_user.preference,
+        user_id=current_user.user_id,
+        email=current_user.email,
+        nickname=current_user.nickname,
+        current_streak=current_user.current_streak,
+        is_push_enabled=current_user.is_push_enabled,
+        preference=current_user.preference, # 이제 객체 그대로 넣어도 OK
         achievements=medal_list,
-        has_unread_medals=has_unread
+        has_unread_medals=has_unread,
+        persona=current_user.persona
     )
 
 # 1-2 사용자가 메달 확인 버튼을 눌렀을 때 호출하는 API

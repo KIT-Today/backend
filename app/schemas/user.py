@@ -1,5 +1,5 @@
 # app/schemas/user.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -29,6 +29,9 @@ class TokenResponse(BaseModel):
 # 5. 취향 정보 등록/수정할 때 받을 데이터 (Request)
 # 프론트에서 이 정보를 보내면 저장하거나 수정합니다.
 class UserPreferenceUpdate(BaseModel):
+    # ORM 모드 설정 (이게 있어야 DB 객체를 바로 변환 가능)
+    model_config = ConfigDict(from_attributes=True)
+
     is_active: bool       # 활동적(True) / 정적(False)
     is_outdoor: bool      # 실외(True) / 실내(False)
     is_social: bool       # 함께(True) / 혼자(False)
@@ -37,6 +40,9 @@ class UserPreferenceUpdate(BaseModel):
 # 6. 기본 회원 정보 수정할 때 받을 데이터 (Request)
 # 닉네임이나 알림 설정만 쏙 골라서 바꿀 수 있게 Optional로 처리했습니다.
 class UserInfoUpdate(BaseModel):
+    # 사용자 정보를 수정하고 나서 수정된 정보를 리턴해줄 때, 만약 UserInfoUpdate모델을 그대로 응답 스키마로 쓴다면 문제가 될 수 어서 미리 달아두는 것이 좋다.
+    model_config = ConfigDict(from_attributes=True) 
+
     nickname: Optional[str] = None
     is_push_enabled: Optional[bool] = None
     fcm_token: Optional[str] = None  # 토큰도 갱신할 수 있음.
@@ -49,6 +55,9 @@ class SplashMessageRead(BaseModel):
 
 # 8. 프로필 조회 시 메달 목록
 class MedalInfo(BaseModel):
+    # 여기도 DB에서 가져온 Achievement 객체를 변환해야 하므로 필요
+    model_config = ConfigDict(from_attributes=True)
+
     achieve_id: int
     medal_name: str
     medal_explain: str
@@ -58,6 +67,9 @@ class MedalInfo(BaseModel):
 # 9. 내 정보 상세 조회 시 돌려줄 데이터 (Response)
 # 프론트엔드 마이페이지에 뿌려줄 정보들의 집합입니다.
 class UserProfileResponse(BaseModel):
+    # User 객체에서 데이터를 뽑아와야 하므로 필요
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: int
     email: str
     nickname: str

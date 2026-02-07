@@ -1,5 +1,5 @@
 # app/crud/attendance.py
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from fastapi import HTTPException
@@ -7,7 +7,9 @@ from app.models.tables import Attendance, User
 
 # 1. 출석 생성 (비동기)
 async def create_attendance(db: AsyncSession, user_id: int) -> Attendance:
-    today = date.today()
+    # [변경] 서버 설정과 무관하게 무조건 한국 날짜 가져오기
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
     
     # 1. 이미 오늘 출석했는지 확인
     statement = select(Attendance).where(Attendance.user_id == user_id).where(Attendance.att_date == today)
@@ -39,8 +41,9 @@ async def create_attendance(db: AsyncSession, user_id: int) -> Attendance:
     new_att = Attendance(user_id=user_id, att_date=today)
     db.add(new_att)
     
-    # 5. 한 번에 저장
-    await db.commit()  
+   # [중요 변경] 여기서 commit()을 하지 않습니다!
+    # 대신 flush()를 해서 DB에 ID만 생성해두고, 실제 확정(Commit)은 부모 함수(create_diary)에게 맡깁니다.
+    await db.flush()
     await db.refresh(new_att) 
     
     return new_att

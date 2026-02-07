@@ -17,6 +17,8 @@ from database import get_session
 # 인증 관련
 from app.api.deps import get_current_user
 
+from fastapi import UploadFile, HTTPException
+
 # 모델 & 스키마
 from app.models.tables import User, Diary, EmotionAnalysis, SolutionLog
 from app.schemas.diary import (
@@ -28,6 +30,9 @@ from app.schemas.diary import (
 from app.crud import diary as crud_diary
 
 router = APIRouter()
+
+# [설정] 제한할 용량 (10MB)
+MAX_FILE_SIZE = 10 * 1024 * 1024
 
 # 1. 일기 등록 
 @router.post("/", response_model=DiaryRead)
@@ -42,11 +47,37 @@ async def create_diary(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
+    # [순서 변경 1] 가벼운 JSON 검사를 먼저 합니다. (여기서 에러 나면 사진 업로드 안 함)
+    # 프론트엔드에서 Keywords_json을 잘못된 형식(JSON아님)으로 보내면 500 에러가 나는데 이걸 안전하게 예외처리로 바꿈.
+    keywords = None
+    if keywords_json:
+        try:
+            keywords = json.loads(keywords_json)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="keywords_json 형식이 올바르지 않습니다.")
+        
+    # [순서 변경 2] 그 다음에 무거운 이미지 업로드를 합니다.    
     image_url = None
     if image:
+        # ---------------------------------------------------------
+        # [추가] 이미지 용량 및 형식 체크 로직
+        # ---------------------------------------------------------
+        # 1. 파일 끝으로 이동해서 크기 확인
+        image.file.seek(0, 2)
+        size = image.file.tell()
+        # 2. 다시 파일 처음으로 되돌리기 (필수! 안 하면 업로드될 때 빈 파일이 됨)
+        image.file.seek(0)
+
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="이미지 파일은 10MB 이하여야 합니다.")
+        
+        if not image.content_type.startswith("image/"):
+             raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
+        # ---------------------------------------------------------
+
         image_url = await anyio.to_thread.run_sync(upload_image_to_s3, image)
 
-    keywords = json.loads(keywords_json) if keywords_json else None
+    # 이후 DB 저장 로직
     diary_in = DiaryCreate(input_type=input_type, content=content, keywords=keywords)
     
     # 일기 저장
@@ -93,6 +124,7 @@ async def read_diary(
     return await crud_diary.get_diary(db, diary_id, current_user.user_id)
 
 # 4. 일기 수정 
+# [새 사진 업로드] -> [DB 저장] -> [성공 시 기존 사진 삭제]
 @router.patch("/{diary_id}", response_model=DiaryRead)
 async def update_diary(
     diary_id: int,
@@ -105,24 +137,59 @@ async def update_diary(
     current_user: User = Depends(get_current_user)
 ):
 
+    # 1. DB에서 일기를 가져옵니다. (이때는 아직 수정 전이라 옛날 주소가 들어있습니다)
     db_diary = await crud_diary.get_diary(db, diary_id, current_user.user_id)
+    
+    # [수정 전] 기존 URL 저장
+    # [중요!] 여기가 바로 "왼손에 헌 옷 쥐기" 단계입니다.
+    # DB를 바꾸기 전에, 현재 주소를 'old_image_url'이라는 변수에 복사해둡니다.
+    old_image_url = db_diary.image_url
     new_image_url = db_diary.image_url
 
-    if image:
-        if db_diary.image_url:
-            await anyio.to_thread.run_sync(delete_image_from_s3, db_diary.image_url)
-        new_image_url = await anyio.to_thread.run_sync(upload_image_to_s3, image)
+# ... (새 사진 업로드 과정) ...
 
+    # [순서 변경 1] JSON 검사 먼저!
+    # 1. 키워드 파싱 (예외처리 포함)
     keywords = None
     if keywords_json:
         try:
             keywords = json.loads(keywords_json)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="keywords_json 형식이 올바르지 않습니다.")
+        
+    # [순서 변경 2] 이미지 업로드
+    # 2. 새 이미지가 있다면 '먼저' 업로드 (안전하게!)
+    if image:
+        # ---------------------------------------------------------
+        # [추가] 이미지 용량 및 형식 체크 로직
+        # ---------------------------------------------------------
+        image.file.seek(0, 2)
+        size = image.file.tell()
+        image.file.seek(0) # 필수 복구
 
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="이미지 파일은 10MB 이하여야 합니다.")
+        
+        if not image.content_type.startswith("image/"):
+             raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
+        # ---------------------------------------------------------
+
+        new_image_url = await anyio.to_thread.run_sync(upload_image_to_s3, image)
+
+    
+    # 이후 DB 업데이트 
     diary_in = DiaryUpdate(input_type=input_type, content=content, keywords=keywords)
     
+    # 3. DB 업데이트 - "새 주소"로 업데이트합니다.
+    # 이제 db_diary 객체 안의 주소는 새것으로 바뀌었지만,
+    # 위에서 만든 'old_image_url' 변수는 여전히 옛날 주소를 기억하고 있습니다!
     updated_diary, is_changed = await crud_diary.update_diary_with_image(db, db_diary, diary_in, new_image_url)
+
+    # 모든 게 성공했으니, 아까 챙겨둔 'old_image_url'을 이용해 S3에서 지웁니다.
+    # 4. 모든 처리가 성공했다면, 그때 비로소 '기존 이미지' 삭제 (백그라운드 처리 추천)
+    if image and old_image_url and (old_image_url != new_image_url):
+        # BackgroundTasks를 이용해 응답 후 삭제 (사용자 대기 시간 단축)
+        background_tasks.add_task(delete_image_from_s3, old_image_url)
 
     if is_changed:
         background_tasks.add_task(request_diary_analysis, updated_diary.diary_id, current_user.user_id)

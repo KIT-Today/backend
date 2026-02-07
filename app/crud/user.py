@@ -1,4 +1,8 @@
 # app/crud/user.py
+# [추가] S3 삭제 함수 임포트
+from app.services.s3_service import delete_image_from_s3
+# [추가] anyio 임포트 (동기 함수인 delete_image_from_s3를 비동기로 돌리기 위해)
+import anyio
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.models.tables import User, UserPreference, PushMessage, Diary, EmotionAnalysis, Medal, Achievement
@@ -90,12 +94,41 @@ async def update_user_info(session: AsyncSession, user_id: int, user_in: UserInf
 
 # 6. 🗑️ 회원 탈퇴 (삭제)
 async def delete_user(session: AsyncSession, user_id: int):
+    # 1. 유저 조회
     user = await session.get(User, user_id)
-    if user:
-        await session.delete(user)
-        await session.commit()
-        return True
-    return False
+    if not user:
+        return False
+
+    # -------------------------------------------------------------
+    # [추가된 로직] S3 이미지 삭제
+    # DB에서 유저가 삭제되면(Cascade) 일기 데이터도 사라져서 URL을 알 수 없게 됩니다.
+    # 따라서 DB 삭제 전에 먼저 일기 목록을 조회해서 S3 파일을 지워야 합니다.
+    # -------------------------------------------------------------
+    
+    # 2. 유저의 모든 일기 조회
+    statement = select(Diary).where(Diary.user_id == user_id)
+    result = await session.exec(statement)
+    diaries = result.all()
+
+    # 3. 일기 하나하나 확인하며 이미지 삭제
+    for diary in diaries:
+        if diary.image_url:
+            # S3 삭제 함수(boto3)는 동기 방식이라 서버가 멈출 수 있으므로,
+            # anyio.to_thread.run_sync를 사용해 비동기적으로 처리합니다.
+            try:
+                await anyio.to_thread.run_sync(delete_image_from_s3, diary.image_url)
+            except Exception as e:
+                # 이미지가 없거나 에러가 나도 회원 탈퇴는 진행되어야 하므로 로그만 찍고 넘어감
+                print(f"⚠️ S3 이미지 삭제 실패 (무시하고 진행): {e}")
+
+    # -------------------------------------------------------------
+
+    # 4. DB 데이터 삭제 
+    # (User 모델에 설정된 cascade="all, delete-orphan" 덕분에 DB 내의 일기, 출석 등은 자동 삭제됨)
+    await session.delete(user)
+    await session.commit()
+    
+    return True
 
 # 7. 앱 처음 화면에 랜덤 문구 조회
 async def get_random_splash_message(db: AsyncSession):

@@ -6,9 +6,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 import jwt
 from app.core.security import SECRET_KEY, ALGORITHM
 from database import get_session
-# [수정] User뿐만 아니라 관계된 모델(Achievement)도 로딩 옵션을 위해 필요할 수 있음
+# User뿐만 아니라 관계된 모델(Achievement)도 로딩 옵션을 위해 필요할 수 있음
 from app.models.tables import User, Achievement 
-# [수정] 관계 데이터를 미리 로딩하기 위한 도구들
+# 관계 데이터를 미리 로딩하기 위한 도구들
 from sqlalchemy.orm import selectinload 
 from sqlmodel import select 
 

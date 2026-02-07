@@ -62,7 +62,7 @@ async def create_diary(
     # -> AI 오류 방지를 위해 기본값(예: 1번 페르소나)을 설정
     final_persona = target_persona if target_persona is not None else 1
 
-    # [변경] 백그라운드 호출 (수정 없음, 함수 내부에서 세션 생성함)
+    # 백그라운드 호출 (수정 없음, 함수 내부에서 세션 생성함)
     background_tasks.add_task(request_diary_analysis, db_diary.diary_id, current_user.user_id, final_persona)
 
     return db_diary
@@ -74,7 +74,7 @@ async def read_diaries(
     limit: int = 10,
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
-    db: AsyncSession = Depends(get_session), # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
    
@@ -86,7 +86,7 @@ async def read_diaries(
 @router.get("/{diary_id}", response_model=DiaryRead)
 async def read_diary(
     diary_id: int = Path(...),
-    db: AsyncSession = Depends(get_session), # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session), 
     current_user: User = Depends(get_current_user)
 ):
     # [변경] await
@@ -101,10 +101,10 @@ async def update_diary(
     content: Optional[str] = Form(None),
     keywords_json: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_session), # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # [변경] await
+
     db_diary = await crud_diary.get_diary(db, diary_id, current_user.user_id)
     new_image_url = db_diary.image_url
 
@@ -122,7 +122,6 @@ async def update_diary(
 
     diary_in = DiaryUpdate(input_type=input_type, content=content, keywords=keywords)
     
-    # [변경] await
     updated_diary, is_changed = await crud_diary.update_diary_with_image(db, db_diary, diary_in, new_image_url)
 
     if is_changed:
@@ -135,7 +134,7 @@ async def update_diary(
 @router.delete("/{diary_id}")
 async def delete_diary(
     diary_id: int = Path(...),
-    db: AsyncSession = Depends(get_session), # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session), 
     current_user: User = Depends(get_current_user)
 ):
     
@@ -145,7 +144,7 @@ async def delete_diary(
 @router.post("/analysis-callback")
 async def receive_ai_result(
     result: AIAnalysisResult,
-    db: AsyncSession = Depends(get_session) # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session) 
 ):
     print(f"📩 [From AI Server] 분석 결과 도착! (Diary ID: {result.diary_id})")
 
@@ -177,7 +176,7 @@ async def receive_ai_result(
     )
     db.add(emotion)
 
-    # 5. [수정] SolutionLog 저장 (조건: 일기가 3개 이상일 때)
+    # 5. SolutionLog 저장 (조건: 일기가 3개 이상일 때)
     # (AI가 준 recommendations 리스트를 돌면서 ai_message를 저장합니다)
     if diary_count >= 3:
         for rec in result.recommendations:
@@ -205,7 +204,7 @@ async def delete_diary_photo(
     db: AsyncSession = Depends(get_session), # [변경] AsyncSession
     current_user: User = Depends(get_current_user)
 ):
-    # [변경] await
+   
     db_diary = await crud_diary.get_diary(db, diary_id, current_user.user_id)
     
     if db_diary.image_url:
@@ -213,7 +212,6 @@ async def delete_diary_photo(
         db_diary.image_url = None 
         db.add(db_diary)
         
-        # [변경] await
         await db.commit()
         await db.refresh(db_diary)
         

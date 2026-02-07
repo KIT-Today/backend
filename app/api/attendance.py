@@ -13,10 +13,10 @@ from app.models.tables import User
 router = APIRouter()
 
 @router.get("/", response_model=List[AttendanceRead])
-async def read_attendance( # [변경] async def
+async def read_attendance( 
     year: int,
     month: int,
-    db: AsyncSession = Depends(get_session), # [변경] AsyncSession
+    db: AsyncSession = Depends(get_session), 
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -25,7 +25,7 @@ async def read_attendance( # [변경] async def
       - year: 2026
       - month: 1
     """
-    # [변경] await 추가 (crud 함수가 async이므로)
+
     attendances = await crud_attendance.get_monthly_attendance(
         db, user_id=current_user.user_id, year=year, month=month
     )

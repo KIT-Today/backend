@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # .env 파일 로드
 load_dotenv()
 
-# [수정] .env에서 값 가져오기 (없을 경우를 대비해 기본값 설정)
+# .env에서 값 가져오기 (없을 경우를 대비해 기본값 설정)
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_key")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_WEEKS = int(os.getenv("ACCESS_TOKEN_EXPIRE_WEEKS", 2))

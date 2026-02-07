@@ -60,7 +60,7 @@ class DiaryRead(DiaryBase):
     image_url: Optional[str] = None 
     created_at: datetime
 
-    # [추가] 분석 결과가 존재하는지 여부를 프론트가 쉽게 알게 함 -- 이거 추가함
+    # 분석 결과가 존재하는지 여부를 프론트가 쉽게 알게 함 -- 이거 추가함
     is_analyzed: bool = False
     
     # [관계 데이터] 없으면 null 또는 빈 리스트로 나감

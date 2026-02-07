@@ -22,11 +22,11 @@ async def create_diary(db: AsyncSession, diary_in: DiaryCreate, user_id: int, im
         await create_attendance(db, user_id=user_id)
 
         # 3. 커밋
-        await db.commit() # [변경] await
-        await db.refresh(db_diary) # [변경] await
+        await db.commit() 
+        await db.refresh(db_diary) 
         
     except Exception as e:
-        await db.rollback() # [변경] 에러 발생 시 롤백도 await
+        await db.rollback() # 에러 발생 시 롤백도 await
         print(f"🚨 DB 처리 중 오류 발생: {e}")
         raise HTTPException(status_code=500, detail="일기 저장 및 출석 처리 중 오류가 발생했습니다.")
 
@@ -44,7 +44,7 @@ async def get_diary(db: AsyncSession, diary_id: int, user_id: int) -> Diary:
             selectinload(Diary.solution_logs).selectinload(SolutionLog.activity)
         )
     )
-    result = await db.exec(statement) # [변경] await
+    result = await db.exec(statement)
     diary = result.first()
     
     if not diary:
@@ -76,7 +76,7 @@ async def get_diaries(
             end_date = datetime(year + 1, 1, 1)
             statement = statement.where(Diary.created_at >= start_date).where(Diary.created_at < end_date)
     
-    # [수정] 목록 조회 시에도 관계 데이터를 미리 로딩해야 스키마 에러가 안 납니다!
+    # 목록 조회 시에도 관계 데이터를 미리 로딩해야 스키마 에러가 안 납니다!
     statement = statement.options(
         selectinload(Diary.emotion_analysis),
         selectinload(Diary.solution_logs).selectinload(SolutionLog.activity)
@@ -84,7 +84,7 @@ async def get_diaries(
 
     statement = statement.order_by(Diary.created_at.desc()).offset(skip).limit(limit)
     
-    result = await db.exec(statement) # [변경] await
+    result = await db.exec(statement) 
     return result.all()
 
 # 4. 일기 수정 (비동기)
@@ -101,7 +101,7 @@ async def update_diary_with_image(
         is_content_changed = True
 
     if is_content_changed:
-        # [변경] delete 실행 시 await
+        # delete 실행 시 await
         await db.exec(delete(EmotionAnalysis).where(EmotionAnalysis.diary_id == db_diary.diary_id))
         await db.exec(delete(SolutionLog).where(SolutionLog.diary_id == db_diary.diary_id))
 
@@ -112,13 +112,13 @@ async def update_diary_with_image(
     db_diary.image_url = image_url
     
     db.add(db_diary)
-    await db.commit() # [변경] await
+    await db.commit() 
     
     return db_diary, is_content_changed
 
 # 5. 일기 삭제 (비동기)
 async def delete_diary(db: AsyncSession, diary_id: int, user_id: int):
-    # [변경] 내부 함수 호출 시 await
+    # 내부 함수 호출 시 await
     db_diary = await get_diary(db, diary_id, user_id)
 
     if db_diary.image_url:
@@ -127,8 +127,8 @@ async def delete_diary(db: AsyncSession, diary_id: int, user_id: int):
         # 일단은 기존 로직 유지
         delete_image_from_s3(db_diary.image_url)
     
-    await db.delete(db_diary) # [변경] delete 자체는 await 필요 없음(add와 비슷), 하지만 commit은 필수
-    await db.commit() # [변경] await
+    await db.delete(db_diary) # delete 자체는 await 필요 없음(add와 비슷), 하지만 commit은 필수
+    await db.commit() 
     
     return {"message": "일기가 삭제되었습니다."}
 

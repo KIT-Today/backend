@@ -13,7 +13,6 @@ from app.schemas.user import (
     MedalInfo
 )
 from app.crud import user as crud_user
-# [주의] 이 함수도 아래에서 비동기로 고쳐야 합니다.
 from app.services.notification import check_and_send_inactivity_alarms
 
 router = APIRouter()
@@ -46,16 +45,16 @@ async def read_my_profile( # [변경] async
 
 # 1-2 사용자가 메달 확인 버튼을 눌렀을 때 호출하는 API
 @router.patch("/medals/{achieve_id}/read")
-async def mark_medal_as_read( # [변경] async
+async def mark_medal_as_read( 
     achieve_id: int,
-    session: AsyncSession = Depends(get_session), # [변경] AsyncSession
+    session: AsyncSession = Depends(get_session), 
     current_user: User = Depends(get_current_user)
 ):
     statement = select(Achievement).where(
         Achievement.achieve_id == achieve_id,
         Achievement.user_id == current_user.user_id
     )
-    # [변경] await exec
+   
     result = await session.exec(statement)
     achievement = result.first()
 
@@ -64,13 +63,13 @@ async def mark_medal_as_read( # [변경] async
     
     achievement.is_read = True
     session.add(achievement)
-    await session.commit() # [변경] await
+    await session.commit() 
     return {"message": "확인 완료"}
 
 
 # 2. 🎨 취향 정보 등록 및 수정
 @router.post("/preferences")
-async def update_my_preferences( # [변경] async
+async def update_my_preferences( 
     pref_in: UserPreferenceUpdate,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -86,7 +85,7 @@ async def update_my_preferences( # [변경] async
 
 # 3. ⚙️ 기본 정보 수정 (닉네임, 알림, 토큰)
 @router.patch("/info")
-async def update_my_info( # [변경] async
+async def update_my_info( 
     user_in: UserInfoUpdate,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -109,7 +108,7 @@ async def update_my_info( # [변경] async
 
 # 4. 🗑️ 회원 탈퇴
 @router.delete("/me")
-async def delete_my_account( # [변경] async
+async def delete_my_account( 
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -126,7 +125,7 @@ async def delete_my_account( # [변경] async
 
 # 👇 [테스트용 버튼]
 @router.post("/test/send-inactivity-push")
-async def test_send_inactivity_push( # [변경] async
+async def test_send_inactivity_push( 
     db: AsyncSession = Depends(get_session)
 ):
     """
@@ -137,7 +136,7 @@ async def test_send_inactivity_push( # [변경] async
 
 # 5. 앱 초기 화면에 랜덤 문구 
 @router.get("/splash", response_model=SplashMessageRead)
-async def read_splash_message(db: AsyncSession = Depends(get_session)): # [변경] async
+async def read_splash_message(db: AsyncSession = Depends(get_session)):
     """
     앱 초기 화면(스플래시)에 띄울 랜덤 문구 하나를 가져옵니다.
     """

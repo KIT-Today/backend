@@ -9,7 +9,7 @@ from sqlalchemy import func, desc
 # 1. 이메일로 유저 찾기 (중복 가입 방지 & 로그인 시 사용)
 async def get_user_by_email(db: AsyncSession, email: str):
     statement = select(User).where(User.email == email)
-    # [변경] await db.exec(...)
+   
     result = await db.exec(statement)
     return result.first()
 
@@ -24,8 +24,8 @@ async def create_user(db: AsyncSession, user_in: UserCreate):
         provider_id=None
     )
     db.add(db_user)
-    await db.commit()   # [변경] await
-    await db.refresh(db_user) # [변경] await
+    await db.commit()  
+    await db.refresh(db_user) 
     return db_user
 
 # 3. SNS 유저 생성하기 (카카오 로그인 등)
@@ -121,7 +121,7 @@ async def check_and_award_recovery_medal(session: AsyncSession, user_id: int):
         .order_by(desc(EmotionAnalysis.created_at))
         .limit(2)
     )
-    # [변경] await로 실행하고 결과 받기
+    # await로 실행하고 결과 받기
     result_emotions = await session.exec(statement)
     results = result_emotions.all()
 
@@ -136,7 +136,7 @@ async def check_and_award_recovery_medal(session: AsyncSession, user_id: int):
     if previous.mbi_category in burnout_states and current.mbi_category == "NORMAL":
         
         # 3. 메달 마스터 정보 가져오기
-        # [변경] await session.exec(...)
+        # await session.exec(...)
         medal_stmt = select(Medal).where(Medal.medal_code == "RECOVERY_LIGHT")
         medal_result = await session.exec(medal_stmt)
         medal = medal_result.first()
@@ -159,7 +159,7 @@ async def check_and_award_recovery_medal(session: AsyncSession, user_id: int):
                 is_read=False
             )
             session.add(new_achievement)
-            await session.commit() # [변경] await 필수!
+            await session.commit() # await 필수!
             return medal
             
     return None

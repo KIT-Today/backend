@@ -27,11 +27,11 @@ async def create_diary(db: AsyncSession, diary_in: DiaryCreate, user_id: int, im
         await db.commit() 
         await db.refresh(db_diary) 
 
-        # MissingGreenlet 에러 방지 (필수!)
-        # 방금 만든 일기라 당연히 분석 결과와 솔루션이 없습니다.
-        # FastAPI가 응답을 만들 때 DB 조회를 시도하지 않도록 빈 값을 수동으로 채워줍니다.
-        db_diary.emotion_analysis = None
-        db_diary.solution_logs = []
+        # 기존: await db.refresh(db_diary) -> 수동 할당 (불안정함)
+        # 변경: 관계 데이터(emotion_analysis, solution_logs)도 같이 리프레시합니다.
+        #       새로 만든 일기라 당연히 DB에는 데이터가 없지만, 
+        #       SQLAlchemy가 "없음(None/Empty)" 상태를 비동기로 안전하게 로딩해줍니다.
+        await db.refresh(db_diary, attribute_names=["emotion_analysis", "solution_logs"])
         
     except Exception as e:
         await db.rollback() # 에러 발생 시 롤백도 await

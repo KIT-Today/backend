@@ -21,6 +21,12 @@ async def create_diary(db: AsyncSession, diary_in: DiaryCreate, user_id: int, im
         # 2. 출석 체크 호출 (비동기 함수이므로 await 필수!)
         await create_attendance(db, user_id=user_id)
 
+        # MissingGreenlet 에러 방지 (필수!)
+        # 방금 만든 일기라 당연히 분석 결과와 솔루션이 없습니다.
+        # FastAPI가 응답을 만들 때 DB 조회를 시도하지 않도록 빈 값을 수동으로 채워줍니다.
+        db_diary.emotion_analysis = None
+        db_diary.solution_logs = []
+
         # 3. 커밋
         await db.commit() 
         await db.refresh(db_diary) 
@@ -34,6 +40,7 @@ async def create_diary(db: AsyncSession, diary_in: DiaryCreate, user_id: int, im
 
 # 2. 일기 상세 조회 (비동기)
 async def get_diary(db: AsyncSession, diary_id: int, user_id: int) -> Diary:
+    # [안전] selectinload를 사용하므로 MissingGreenlet 오류가 발생하지 않습니다.
     statement = (
         select(Diary)
         .where(Diary.diary_id == diary_id)
@@ -105,6 +112,12 @@ async def update_diary_with_image(
         await db.exec(delete(EmotionAnalysis).where(EmotionAnalysis.diary_id == db_diary.diary_id))
         await db.exec(delete(SolutionLog).where(SolutionLog.diary_id == db_diary.diary_id))
 
+        # 메모리 상의 객체 초기화 
+        # DB에서는 지웠지만, db_diary 객체는 여전히 과거의 분석 결과를 기억하고 있을 수 있습니다.
+        # 응답 시 "분석 결과 없음(None)"으로 정확히 나가도록 명시적으로 비워줍니다.
+        db_diary.emotion_analysis = None
+        db_diary.solution_logs = []
+
     update_data = diary_in.model_dump(exclude_unset=True, exclude_none=True)
     for key, value in update_data.items():
         setattr(db_diary, key, value)
@@ -118,7 +131,7 @@ async def update_diary_with_image(
 
 # 5. 일기 삭제 (비동기)
 async def delete_diary(db: AsyncSession, diary_id: int, user_id: int):
-    # 내부 함수 호출 시 await
+    # 내부 함수 호출 시 await , 내부 함수 호출 (get_diary에서 이미 로딩하므로 안전)
     db_diary = await get_diary(db, diary_id, user_id)
 
     if db_diary.image_url:
@@ -135,6 +148,9 @@ async def delete_diary(db: AsyncSession, diary_id: int, user_id: int):
 # 6. 14일 일기 최근 데이터 조회 (이미 비동기임, 그대로 유지)
 async def get_recent_diaries_for_ai(db: AsyncSession, user_id: int, days: int = 14):
     two_weeks_ago = datetime.now() - timedelta(days=days)
+    # [참고] 여기서는 selectinload를 안 썼지만 괜찮습니다.
+    # AI 서버로 보낼 때는 emotion_analysis나 solution_logs 같은 관계 데이터를 안 보내고
+    # 오직 content, keywords 같은 기본 컬럼만 쓰기 때문입니다.
     statement = (
         select(Diary)
         .where(Diary.user_id == user_id)

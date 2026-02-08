@@ -8,6 +8,8 @@ from app.schemas.diary import DiaryCreate, DiaryUpdate
 from app.crud.attendance import create_attendance # 위에서 수정한 비동기 함수
 from app.services.s3_service import delete_image_from_s3
 
+import anyio
+
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -21,15 +23,15 @@ async def create_diary(db: AsyncSession, diary_in: DiaryCreate, user_id: int, im
         # 2. 출석 체크 호출 (비동기 함수이므로 await 필수!)
         await create_attendance(db, user_id=user_id)
 
+        # 3. 커밋
+        await db.commit() 
+        await db.refresh(db_diary) 
+
         # MissingGreenlet 에러 방지 (필수!)
         # 방금 만든 일기라 당연히 분석 결과와 솔루션이 없습니다.
         # FastAPI가 응답을 만들 때 DB 조회를 시도하지 않도록 빈 값을 수동으로 채워줍니다.
         db_diary.emotion_analysis = None
         db_diary.solution_logs = []
-
-        # 3. 커밋
-        await db.commit() 
-        await db.refresh(db_diary) 
         
     except Exception as e:
         await db.rollback() # 에러 발생 시 롤백도 await
@@ -108,7 +110,7 @@ async def update_diary_with_image(
         is_content_changed = True
 
     if is_content_changed:
-        # delete 실행 시 await
+        # delete 실행 시 await 1. DB에서 연관 데이터 삭제
         await db.exec(delete(EmotionAnalysis).where(EmotionAnalysis.diary_id == db_diary.diary_id))
         await db.exec(delete(SolutionLog).where(SolutionLog.diary_id == db_diary.diary_id))
 
@@ -118,15 +120,35 @@ async def update_diary_with_image(
         db_diary.emotion_analysis = None
         db_diary.solution_logs = []
 
+    # 2. 일기 정보 업데이트
     update_data = diary_in.model_dump(exclude_unset=True, exclude_none=True)
     for key, value in update_data.items():
         setattr(db_diary, key, value)
     
-    db_diary.image_url = image_url
+    # 이미지 URL이 있으면 업데이트
+    if image_url:
+        db_diary.image_url = image_url
     
     db.add(db_diary)
+    # 3. 커밋 (이 순간 db_diary의 모든 속성이 만료됨!)
     await db.commit() 
-    
+
+   
+    # [최적화 포인트] 상황에 따라 Refresh 전략을 다르게 가져갑니다.
+    if is_content_changed:
+        # A. 내용이 바뀌었다면? -> 분석 결과는 이미 지웠으니 DB에서 가져올 필요가 없음!
+        # 기본 정보(수정된 내용, 날짜 등)만 리프레시합니다.
+        await db.refresh(db_diary) 
+        
+        # 그리고 관계 데이터는 빈 값으로 세팅 (쿼리 절약 성공!)
+        db_diary.emotion_analysis = None
+        db_diary.solution_logs = []
+        
+    else:
+        # B. 사진만 바뀌었다면? -> 분석 결과가 살아있음.
+        # 기존 분석 결과를 유지하기 위해 명시적으로 같이 로딩합니다.
+        await db.refresh(db_diary, attribute_names=["emotion_analysis", "solution_logs"])
+
     return db_diary, is_content_changed
 
 # 5. 일기 삭제 (비동기)
@@ -135,10 +157,10 @@ async def delete_diary(db: AsyncSession, diary_id: int, user_id: int):
     db_diary = await get_diary(db, diary_id, user_id)
 
     if db_diary.image_url:
-        # S3 삭제는 네트워크 작업이므로 여기서 바로 호출해도 되지만, 
-        # 만약 S3 서비스가 동기 함수라면 나중에 anyio.to_thread로 감싸는 게 좋습니다.
-        # 일단은 기존 로직 유지
-        delete_image_from_s3(db_diary.image_url)
+        # [핵심] run_sync를 사용하여 별도 스레드에서 실행
+        # 첫 번째 인자: 실행할 함수 이름 (괄호 없이)
+        # 두 번째 인자: 그 함수에 들어갈 파라미터
+        await anyio.to_thread.run_sync(delete_image_from_s3, db_diary.image_url)
     
     await db.delete(db_diary) # delete 자체는 await 필요 없음(add와 비슷), 하지만 commit은 필수
     await db.commit() 

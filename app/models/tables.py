@@ -186,3 +186,12 @@ class NotificationLog(SQLModel, table=True):
     msg_id: Optional[int] = Field(default=None, foreign_key="push_messages.msg_id")
 
     user: Optional[User] = Relationship(back_populates="notification_logs")
+
+# 12. 이메일 인증 번호 저장용
+class EmailVerification(SQLModel, table=True):
+    __tablename__ = "email_verifications"
+    
+    email: str = Field(primary_key=True, max_length=100)
+    code: str = Field(max_length=6) # 인증번호 6자리
+    is_verified: bool = Field(default=False) # 인증 성공 여부
+    created_at: datetime = Field(default_factory=datetime.now)

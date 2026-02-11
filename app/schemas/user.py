@@ -1,5 +1,5 @@
 # app/schemas/user.py
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
@@ -85,3 +85,12 @@ class UserProfileResponse(BaseModel):
     has_unread_medals: bool = False
     # 페르소나의 정보도 제공! 
     persona: Optional[int] = None
+
+# 10. 이메일 인증 요청 (프론트 -> 백엔드)
+class EmailRequest(BaseModel):
+    email: EmailStr
+
+# 11. 인증 번호 확인 요청 (프론트 -> 백엔드)
+class EmailVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str

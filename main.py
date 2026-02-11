@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # [수정] engine과 async_session_maker 가져오기
 from database import engine, async_session_maker 
-from app.api import auth, user, attendance, diary, solution
+from app.api import auth, user, attendance, diary, solution, activity
 from app.services.notification import check_and_send_inactivity_alarms
 
 # 1. 비동기 스케줄러 설정
@@ -70,6 +70,7 @@ app.include_router(user.router, prefix="/users", tags=["users"])
 app.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
 app.include_router(diary.router, prefix="/diaries", tags=["diaries"])
 app.include_router(solution.router, prefix="/solutions", tags=["solutions"])
+app.include_router(activity.router, prefix="/activities", tags=["activities"])
 
 @app.get("/")
 def read_root():

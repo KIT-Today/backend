@@ -1,15 +1,17 @@
 # app/api/auth.py
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession 
 from database import get_session
 import httpx # requests는 동기 방식이고, httpx는 비동기 방식.
 
-from app.schemas.user import UserCreate, UserLogin, SNSLogin, TokenResponse
+from app.schemas.user import UserCreate, UserLogin, SNSLogin, TokenResponse, EmailRequest, EmailVerifyRequest 
 from app.crud import user as crud_user
 from app.core.security import verify_password, create_access_token
 
 from app.api.deps import get_current_user
-from app.models.tables import User
+from app.models.tables import User, EmailVerification
+from app.services.email_service import generate_verification_code, send_verification_email
 
 # 주소 앞에 /auth가 자동으로 붙습니다. (예: /auth/signup)
 router = APIRouter()
@@ -17,6 +19,12 @@ router = APIRouter()
 # 1. 📝 수동 회원가입 (Local Sign-up)
 @router.post("/signup", response_model=TokenResponse, status_code=201)
 async def signup(user_in: UserCreate, db: AsyncSession = Depends(get_session)): 
+
+    # [추가] 이메일 인증이 완료된 상태인지 확인!
+    verification = await db.get(EmailVerification, user_in.email)
+    if not verification or not verification.is_verified:
+         raise HTTPException(status_code=400, detail="이메일 인증이 완료되지 않았습니다.")
+
     # 1-1. 이미 가입된 이메일인지 확인
     user = await crud_user.get_user_by_email(db, email=user_in.email) 
     if user:
@@ -24,6 +32,10 @@ async def signup(user_in: UserCreate, db: AsyncSession = Depends(get_session)):
     
     # 1-2. 가입 진행 (DB 저장)
     new_user = await crud_user.create_user(db, user_in) 
+
+    # [추가] 가입 완료 후 인증 데이터 삭제 (DB 정리)
+    await db.delete(verification)
+    await db.commit()
     
     # 1-3. 우리 앱 전용 토큰 발급
     access_token = create_access_token({"user_id": new_user.user_id})
@@ -114,3 +126,59 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "nickname": current_user.nickname,
     }
+
+# 5. 📧 이메일 인증번호 전송 요청 (추가됨)
+@router.post("/email/request")
+async def request_email_verification(
+    req: EmailRequest, 
+    db: AsyncSession = Depends(get_session)
+):
+    # 이미 가입된 이메일인지 체크
+    user = await crud_user.get_user_by_email(db, email=req.email)
+    if user:
+        raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
+
+    code = generate_verification_code() # 6자리 생성
+
+    # DB에 저장 (Upsert)
+    verification = await db.get(EmailVerification, req.email)
+    if not verification:
+        verification = EmailVerification(email=req.email, code=code)
+    else:
+        verification.code = code
+        verification.is_verified = False # 재요청했으니 인증 초기화
+        verification.created_at = datetime.now()
+    
+    db.add(verification)
+    await db.commit()
+
+    # 이메일 전송
+    await send_verification_email(req.email, code)
+
+    return {"message": "인증 번호가 전송되었습니다. 이메일을 확인해주세요."}
+
+# 6. ✅ 이메일 인증번호 검증 (추가됨)
+@router.post("/email/verify")
+async def verify_email_code(
+    req: EmailVerifyRequest,
+    db: AsyncSession = Depends(get_session)
+):
+    verification = await db.get(EmailVerification, req.email)
+    
+    if not verification:
+        raise HTTPException(status_code=400, detail="인증 요청 기록이 없습니다.")
+
+    if verification.code != req.code:
+        raise HTTPException(status_code=400, detail="인증 번호가 일치하지 않습니다.")
+
+    # 3분(180초) 제한 체크
+    time_diff = datetime.now() - verification.created_at
+    if time_diff.total_seconds() > 180: 
+        raise HTTPException(status_code=400, detail="인증 시간이 만료되었습니다. 다시 요청해주세요.")
+
+    # 인증 성공 처리
+    verification.is_verified = True
+    db.add(verification)
+    await db.commit()
+
+    return {"message": "이메일 인증이 완료되었습니다."}

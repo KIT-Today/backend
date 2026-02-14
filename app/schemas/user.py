@@ -1,7 +1,7 @@
 # app/schemas/user.py
 from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, time
 
 # 1. 회원가입할 때 받을 데이터 (Request)
 class UserCreate(BaseModel):
@@ -48,6 +48,11 @@ class UserInfoUpdate(BaseModel):
     fcm_token: Optional[str] = None  # 토큰도 갱신할 수 있음.
     persona: Optional[int] = None # 페르소나 변경 가능하도록!
 
+    # [추가] 데일리 알림 설정
+    is_daily_alarm_on: Optional[bool] = None
+    daily_alarm_time: Optional[time] = None   # "HH:MM" 형식 문자열 보내면 자동 변환됨
+    daily_alarm_days: Optional[List[int]] = None # [0, 1, 2...]
+
 
 # 7. 앱 처음 화면 문구 응답 전용
 class SplashMessageRead(BaseModel):
@@ -85,6 +90,11 @@ class UserProfileResponse(BaseModel):
     has_unread_medals: bool = False
     # 페르소나의 정보도 제공! 
     persona: Optional[int] = None
+
+    # [추가] 현재 설정 상태 반환
+    is_daily_alarm_on: bool
+    daily_alarm_time: Optional[time]
+    daily_alarm_days: List[int]
 
 # 10. 이메일 인증 요청 (프론트 -> 백엔드)
 class EmailRequest(BaseModel):

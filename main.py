@@ -11,17 +11,22 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 # [수정] engine과 async_session_maker 가져오기
 from database import engine, async_session_maker 
 from app.api import auth, user, attendance, diary, solution, activity
-from app.services.notification import check_and_send_inactivity_alarms
+from app.services.notification import check_and_send_inactivity_alarms, send_custom_daily_alarm
 
 # 1. 비동기 스케줄러 설정
 scheduler = AsyncIOScheduler()
 
-# [수정] 스케줄러가 실행할 함수 (비동기 세션 직접 생성)
+# 스케줄러가 실행할 함수 (비동기 세션 직접 생성)
 async def scheduled_job():
     print("⏰ [자정 알림 체크] 미접속자 확인 중...")
     # 라우터가 아니므로 Depends를 못 씁니다. 직접 세션을 엽니다.
     async with async_session_maker() as session:
         await check_and_send_inactivity_alarms(session)
+
+# 1분마다 실행될 래퍼 함수
+async def scheduled_custom_alarm_job():
+    async with async_session_maker() as session:
+        await send_custom_daily_alarm(session)
 
 # 2. 수명 주기 (Lifespan)
 @asynccontextmanager
@@ -36,6 +41,10 @@ async def lifespan(app: FastAPI):
     # (테스트를 위해 매분 0초마다 실행되게 설정했습니다. 원하시면 hour=0, minute=0으로 바꾸세요)
     # scheduler.add_job(scheduled_job, 'cron', hour=0, minute=0)  # 원래 설정
     scheduler.add_job(scheduled_job, 'cron', hour=18, minute=30) # 테스트용 예시
+
+    # 2. [추가] 사용자 설정 알림 (1분마다 체크)
+    # 1분마다 돌면서 "지금 보내야 할 사람 있나?" 확인합니다.
+    scheduler.add_job(scheduled_custom_alarm_job, 'cron', minute='*')
     
     scheduler.start()
     print("✅ 자동 알림 스케줄러가 시작되었습니다!")

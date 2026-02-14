@@ -85,7 +85,17 @@ async def update_user_info(session: AsyncSession, user_id: int, user_in: UserInf
             user.fcm_token = None
 
     if user_in.fcm_token is not None:
-        user.fcm_token = user_in.fcm_token        
+        user.fcm_token = user_in.fcm_token    
+
+    # [추가] 데일리 알림 설정 업데이트
+    if user_in.is_daily_alarm_on is not None:
+        user.is_daily_alarm_on = user_in.is_daily_alarm_on
+    
+    if user_in.daily_alarm_time is not None:
+        user.daily_alarm_time = user_in.daily_alarm_time
+        
+    if user_in.daily_alarm_days is not None:
+        user.daily_alarm_days = user_in.daily_alarm_days    
             
     session.add(user)
     await session.commit()

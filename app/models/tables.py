@@ -1,6 +1,6 @@
 # app/models/tables.py
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date, datetime, time
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, Text, JSON, UniqueConstraint  # UniqueConstraint 추가됨
 
@@ -25,6 +25,16 @@ class User(SQLModel, table=True):
 
     # 페르소나 (1~5, 선택 안했으면 None)
     persona: Optional[int] = Field(default=None)
+
+    # [추가 1] 데일리 알림 켜짐/꺼짐 여부
+    is_daily_alarm_on: bool = Field(default=False)
+
+    # [추가 2] 알림 받을 시간 (예: 22:00:00)
+    daily_alarm_time: Optional[time] = Field(default=None)
+
+    # [추가 3] 알림 받을 요일들 (예: [0, 2, 4] -> 월, 수, 금)
+    # 0: 월요일 ~ 6: 일요일 (Python datetime 기준)
+    daily_alarm_days: List[int] = Field(default=[], sa_column=Column(JSON))
 
     # 관계 설정 (cascade 옵션 추가)
     diaries: List["Diary"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})

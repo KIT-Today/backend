@@ -49,7 +49,11 @@ async def read_my_profile( # [변경] async
         preference=current_user.preference, # 이제 객체 그대로 넣어도 OK
         achievements=medal_list,
         has_unread_medals=has_unread,
-        persona=current_user.persona
+        persona=current_user.persona,
+        # 아래 내용도 추가함
+        is_daily_alarm_on=current_user.is_daily_alarm_on,
+        daily_alarm_time=current_user.daily_alarm_time,
+        daily_alarm_days=current_user.daily_alarm_days
     )
 
 # 1-2 사용자가 메달 확인 버튼을 눌렀을 때 호출하는 API

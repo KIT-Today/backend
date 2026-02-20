@@ -93,7 +93,7 @@ class EmotionAnalysis(SQLModel, table=True):
     emotion_probs: dict = Field(sa_column=Column(JSON))
     primary_emotion: str = Field(max_length=20)
     primary_score: float = Field()
-    mbi_category: str = Field(default="NONE", max_length=10)
+    mbi_category: str = Field(default="NONE", max_length=30)
     # ai 메시지가 여기에 있어야 함.
     ai_message: Optional[str] = Field(default=None, sa_column=Column(Text))
 

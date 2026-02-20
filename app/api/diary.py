@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.s3_service import upload_image_to_s3, delete_image_from_s3
 from app.services.ai_services import request_diary_analysis
+from app.crud.user import check_and_award_recovery_medal
+from app.core.fcm import send_fcm_notification
 
 # DB 관련 도구들
 from sqlmodel import func, select
@@ -237,14 +239,11 @@ async def receive_ai_result(
         primary_score=result.primary_score,
         mbi_category=final_mbi,
         emotion_probs=result.emotion_probs,
-        # [핵심] AI의 총평을 여기에 저장합니다!
-        # 이제 일기가 3개 미만이어도 메시지는 저장될 수 있습니다. (AI가 보내준다면)
         ai_message=result.ai_message
     )
     db.add(emotion)
 
     # 5. SolutionLog 저장 (조건: 일기가 3개 이상일 때)
-    # (AI가 준 recommendations 리스트를 돌면서 ai_message를 저장합니다)
     if diary_count >= 3:
         for rec in result.recommendations:
             new_solution = SolutionLog(
@@ -256,12 +255,29 @@ async def receive_ai_result(
             db.add(new_solution)
         print(f"✅ 솔루션 저장 완료 (일기 개수: {diary_count}개)")
     else:
-        # 일기가 적어서 솔루션은 저장 안 하지만, 
-        # 위에서 EmotionAnalysis(총평)는 저장했으므로 데이터 손실 없음!
         print(f"ℹ️ 일기 부족({diary_count}개) -> 솔루션 추천 건너뜀 (총평은 저장됨)")
     
+    # [중요] 여기서 먼저 commit을 해야 방금 추가한 EmotionAnalysis가 DB에 들어갑니다!
     await db.commit()
     
+    # ✅ [추가된 부분] 6. 메달 획득 조건 체크 및 알림 전송
+    # 방금 분석 결과가 DB에 들어갔으니, 이전 기록과 비교해서 메달을 줄지 말지 결정합니다.
+    new_achievement = await check_and_award_recovery_medal(db, diary.user_id)
+    
+    if new_achievement:
+        print(f"🏅 유저 {diary.user_id} 메달 획득 성공! (Achieve ID: {new_achievement.achieve_id})")
+        
+        # 유저 정보를 가져와서 푸시 알림(FCM)을 보냅니다. : 프론트에게 보내는 것.
+        user = await db.get(User, diary.user_id)
+        if user and user.fcm_token:
+            # 실시간으로 프론트엔드에 연락
+            await send_fcm_notification(
+                token=user.fcm_token,
+                title="새로운 메달 획득! 🏅",
+                body="마음이 한결 편안해지셨네요. 마이페이지에서 새로운 메달을 확인해 보세요!"
+            )
+    # ---------------------------------------------------------
+
     return {"msg": "Analysis & Solutions saved successfully"}
 
 # 7. 사진만 삭제하는 기능

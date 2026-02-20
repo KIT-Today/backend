@@ -85,6 +85,7 @@ class UserProfileResponse(BaseModel):
     # 아직 취향 설정을 안 했으면 null일 수 있으니 Optional 처리
     preference: Optional[UserPreferenceUpdate] = None
 
+    total_medal_count: int = 0
     # 획득한 메달 목록과 읽지 않은 알림 여부
     achievements: List[MedalInfo] = []
     has_unread_medals: bool = False

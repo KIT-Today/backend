@@ -164,7 +164,6 @@ async def check_and_award_recovery_medal(session: AsyncSession, user_id: int):
         .order_by(desc(EmotionAnalysis.created_at))
         .limit(2)
     )
-    # await로 실행하고 결과 받기
     result_emotions = await session.exec(statement)
     results = result_emotions.all()
 
@@ -179,30 +178,26 @@ async def check_and_award_recovery_medal(session: AsyncSession, user_id: int):
     if previous.mbi_category in burnout_states and current.mbi_category == "NORMAL":
         
         # 3. 메달 마스터 정보 가져오기
-        # await session.exec(...)
         medal_stmt = select(Medal).where(Medal.medal_code == "RECOVERY_LIGHT")
         medal_result = await session.exec(medal_stmt)
         medal = medal_result.first()
         
         if not medal: return None
 
-        # 4. 중복 획득 방지 (UniqueConstraint 준수)
-        check_stmt = select(Achievement).where(
-            Achievement.user_id == user_id,
-            Achievement.medal_id == medal.medal_id
+        # 4. 바로 획득 처리 (조건 없이 무조건 지급)
+        new_achievement = Achievement(
+            user_id=user_id,
+            medal_id=medal.medal_id,
+            is_read=False
         )
-        already_has_result = await session.exec(check_stmt)
-        already_has = already_has_result.first()
-
-        # 5. 아직 없는 메달일 때만 획득 처리
-        if not already_has:
-            new_achievement = Achievement(
-                user_id=user_id,
-                medal_id=medal.medal_id,
-                is_read=False
-            )
-            session.add(new_achievement)
-            await session.commit() # await 필수!
-            return medal
+        session.add(new_achievement)
+        await session.commit() 
+        
+        # 방금 생성된 achieve_id를 가져오기 위해 새로고침
+        await session.refresh(new_achievement) 
+        
+        # ✅ 메달 정보 대신 '업적 내역(Achievement)' 자체를 리턴합니다.
+        # (나중에 프론트엔드로 알림을 보낼 때 achieve_id가 필요하기 때문입니다)
+        return new_achievement
             
     return None

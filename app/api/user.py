@@ -47,6 +47,7 @@ async def read_my_profile( # [변경] async
         current_streak=current_user.current_streak,
         is_push_enabled=current_user.is_push_enabled,
         preference=current_user.preference, # 이제 객체 그대로 넣어도 OK
+        total_medal_count=len(medal_list), # 여기서 개수를 세서 넣어줍니다.
         achievements=medal_list,
         has_unread_medals=has_unread,
         persona=current_user.persona,

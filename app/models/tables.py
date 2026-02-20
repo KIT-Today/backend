@@ -159,11 +159,6 @@ class Medal(SQLModel, table=True):
 class Achievement(SQLModel, table=True):
     __tablename__ = "achievements"
 
-    # 같은 메달 중복 획득 방지 제약조건 
-    __table_args__ = (
-        UniqueConstraint("user_id", "medal_id", name="unique_medal_per_user"),
-    )
-
     achieve_id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="users.user_id")
     medal_id: int = Field(foreign_key="medals.medal_id")

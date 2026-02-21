@@ -110,15 +110,14 @@ async def update_diary_with_image(
         is_content_changed = True
 
     if is_content_changed:
-        # delete 실행 시 await 1. DB에서 연관 데이터 삭제
-        await db.exec(delete(EmotionAnalysis).where(EmotionAnalysis.diary_id == db_diary.diary_id))
-        await db.exec(delete(SolutionLog).where(SolutionLog.diary_id == db_diary.diary_id))
-
-        # 메모리 상의 객체 초기화 
-        # DB에서는 지웠지만, db_diary 객체는 여전히 과거의 분석 결과를 기억하고 있을 수 있습니다.
-        # 응답 시 "분석 결과 없음(None)"으로 정확히 나가도록 명시적으로 비워줍니다.
+        # ORM이 cascade="all, delete-orphan"으로 자동 삭제해주므로 직접 delete 쿼리를 날릴 필요가 없습니다.
+        # 부모 객체에서 관계만 끊어주면 SQLAlchemy가 알아서 처리합니다.
+        
         db_diary.emotion_analysis = None
-        db_diary.solution_logs = []
+        
+        # 리스트 형태의 관계는 새로 []를 할당하기보다 .clear()로 비워주는 것이 
+        # SQLAlchemy가 변경 사항을 추적하는 데 훨씬 안전합니다.
+        db_diary.solution_logs.clear()
 
     # 2. 일기 정보 업데이트
     update_data = diary_in.model_dump(exclude_unset=True, exclude_none=True)

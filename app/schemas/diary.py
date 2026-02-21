@@ -19,14 +19,23 @@ class SolutionLogRead(SQLModel):
     is_selected: bool
     is_completed: bool
 
-    # [중요] DB 객체(SolutionLog)에서 데이터를 꺼낼 때 
-    # log.activity.act_content를 내 act_content로 옮겨담는 로직
+    # DB 객체를 직접 수정하지 않고, 필요한 내용만 딕셔너리에 담아 반환
     @model_validator(mode='before')
-    def map_activity_content(cls, v):
-        # v가 ORM 객체(SolutionLog)인 경우
-        if hasattr(v, 'activity') and v.activity:
-            # v(SolutionLog)에 act_content 속성을 강제로 심어줌 (Pydantic이 읽을 수 있게)
-            v.act_content = v.activity.act_content
+    @classmethod
+    def map_activity_content(cls, v: Any) -> Any:
+        # 들어온 데이터가 딕셔너리가 아니라 DB 객체(SolutionLog)일 때만 처리
+        if getattr(v, '__class__', None) and v.__class__.__name__ == 'SolutionLog':
+            # activity 데이터가 있으면 가져오고, 없으면 빈칸("")으로 처리해서 에러 방지
+            act_content = v.activity.act_content if getattr(v, 'activity', None) else ""
+            
+            # Pydantic이 안전하게 읽을 수 있도록 파이썬 딕셔너리 형태로 만들어서 넘겨줌
+            return {
+                "log_id": v.log_id,
+                "activity_id": v.activity_id,
+                "act_content": act_content,
+                "is_selected": v.is_selected,
+                "is_completed": v.is_completed,
+            }
         return v
 
 # --- [메인 모델] 일기 ---

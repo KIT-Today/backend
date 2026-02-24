@@ -1,5 +1,5 @@
 # app/api/auth.py
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession 
 from database import get_session
@@ -121,10 +121,19 @@ async def kakao_login(sns_in: SNSLogin, db: AsyncSession = Depends(get_session))
 # 4. 🙋‍♀️ 내 정보 보기 (프로필 조회)
 @router.get("/me")
 async def read_users_me(current_user: User = Depends(get_current_user)):
+    # 미접속 일수 계산 로직
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+    
+    calc_inactive_days = 0
+    if current_user.last_att_date:
+        calc_inactive_days = max(0, (today - current_user.last_att_date).days)
+
     return {
         "user_id": current_user.user_id,
         "email": current_user.email,
         "nickname": current_user.nickname,
+        "inactive_days": calc_inactive_days,
     }
 
 # 5. 📧 이메일 인증번호 전송 요청 (추가됨)

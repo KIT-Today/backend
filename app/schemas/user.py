@@ -80,6 +80,9 @@ class UserProfileResponse(BaseModel):
     nickname: str
     current_streak: int      # 연속 출석일 (성취감용)
     is_push_enabled: bool    # 알림 설정 상태 (토글 버튼용)
+
+    # 프론트엔드 전달용 미접속 일수
+    inactive_days: int = 0
     
     # 취향 정보도 같이 내려줍니다. (UserPreferenceUpdate 구조 재사용)
     # 아직 취향 설정을 안 했으면 null일 수 있으니 Optional 처리

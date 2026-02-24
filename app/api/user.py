@@ -12,6 +12,7 @@ from app.schemas.user import (
     SplashMessageRead,
     MedalInfo
 )
+from datetime import datetime, timedelta, timezone
 from app.crud import user as crud_user
 from app.services.notification import check_and_send_inactivity_alarms
 
@@ -37,6 +38,14 @@ async def read_my_profile( # [변경] async
     # ✅ 안 읽은 메달이 하나라도 있는지 체크
     has_unread = any(not ach.is_read for ach in current_user.achievements)
 
+    # KST 기준 미접속 일수 계산 로직
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+    
+    calc_inactive_days = 0
+    if current_user.last_att_date:
+        calc_inactive_days = max(0, (today - current_user.last_att_date).days)
+
     # 2. 명시적 매핑
     # UserProfileResponse에 from_attributes=True를 걸었으므로
     # preference에 DB 객체를 그대로 넣어도 Pydantic이 알아서 변환해줍니다.
@@ -46,6 +55,7 @@ async def read_my_profile( # [변경] async
         nickname=current_user.nickname,
         current_streak=current_user.current_streak,
         is_push_enabled=current_user.is_push_enabled,
+        inactive_days=calc_inactive_days,
         preference=current_user.preference, # 이제 객체 그대로 넣어도 OK
         total_medal_count=len(medal_list), # 여기서 개수를 세서 넣어줍니다.
         achievements=medal_list,

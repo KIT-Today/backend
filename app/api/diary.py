@@ -259,24 +259,34 @@ async def receive_ai_result(
     
     # [중요] 여기서 먼저 commit을 해야 방금 추가한 EmotionAnalysis가 DB에 들어갑니다!
     await db.commit()
+
+    # 유저 정보를 가져와서 푸시 알림(FCM)을 보냅니다.
+    user = await db.get(User, diary.user_id)
+    if user and user.fcm_token:
+        # 🔔 1. 일기 분석 완료 알림 (데이터 페이로드 포함!)
+        await send_fcm_notification(
+            token=user.fcm_token,
+            title="일기 분석 완료 ✨",
+            body="방금 작성하신 일기의 AI 분석이 끝났어요. 결과를 확인해볼까요?",
+            data={
+                "type": "ANALYSIS_COMPLETE",      # 프론트가 어떤 알림인지 구분하기 위한 타입
+                "diary_id": str(diary.diary_id)   # 반드시 문자열(str)로 변환해서 보내야 함!
+            }
+        )
     
-    # ✅ [추가된 부분] 6. 메달 획득 조건 체크 및 알림 전송
-    # 방금 분석 결과가 DB에 들어갔으니, 이전 기록과 비교해서 메달을 줄지 말지 결정합니다.
-    new_achievement = await check_and_award_recovery_medal(db, diary.user_id)
-    
-    if new_achievement:
-        print(f"🏅 유저 {diary.user_id} 메달 획득 성공! (Achieve ID: {new_achievement.achieve_id})")
-        
-        # 유저 정보를 가져와서 푸시 알림(FCM)을 보냅니다. : 프론트에게 보내는 것.
-        user = await db.get(User, diary.user_id)
-        if user and user.fcm_token:
-            # 실시간으로 프론트엔드에 연락
+    # 🔔 2. 메달 획득 조건 체크 및 알림 전송 (기존 로직 유지 + 데이터 추가 가능)
+        new_achievement = await check_and_award_recovery_medal(db, diary.user_id)
+        if new_achievement:
+            print(f"🏅 유저 {diary.user_id} 메달 획득 성공!")
             await send_fcm_notification(
                 token=user.fcm_token,
                 title="새로운 메달 획득! 🏅",
-                body="마음이 한결 편안해지셨네요. 마이페이지에서 새로운 메달을 확인해 보세요!"
+                body="마음이 한결 편안해지셨네요. 사용자페이지에서 획득한 메달을 확인해 보세요!",
+                data={
+                    "type": "NEW_MEDAL",
+                    "achieve_id": str(new_achievement.achieve_id)
+                }
             )
-    # ---------------------------------------------------------
 
     return {"msg": "Analysis & Solutions saved successfully"}
 

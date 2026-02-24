@@ -54,7 +54,10 @@ async def check_and_send_inactivity_alarms(db: AsyncSession):
         await send_fcm_notification(
             token=user.fcm_token,
             title="오늘도(Today)",
-            body=push_msg.msg_content
+            body=push_msg.msg_content,
+            data={
+                "type": "INACTIVITY_ALARM" # 프론트에서 메인화면이나 특정 탭으로 유도
+            }
         )
 
         # 5. 로그 저장
@@ -112,7 +115,10 @@ async def send_custom_daily_alarm(db: AsyncSession):
             success = await send_fcm_notification(
                 token=user.fcm_token,
                 title="오늘의 하루를 기록해보세요 ✏️",
-                body=f"{user.nickname}님, 기다리고 있었어요! 오늘 어떤 일이 있었나요?"
+                body=f"{user.nickname}님, 기다리고 있었어요! 오늘 어떤 일이 있었나요?",
+                data={
+                    "type": "DAILY_ALARM" # 프론트에서 알림 클릭 시 '일기 작성 화면'으로 바로 이동!
+                }
             )
             
             if success:

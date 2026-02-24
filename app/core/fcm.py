@@ -17,9 +17,9 @@ def _send_fcm_sync(message):
     return messaging.send(message)
 
 # [변경] 외부에서 호출할 비동기 함수 (async def)
-async def send_fcm_notification(token: str, title: str, body: str):
+async def send_fcm_notification(token: str, title: str, body: str, data: dict = None):
     """
-    진짜 알림을 보내는 함수 (비동기 래퍼)
+    진짜 알림을 보내는 함수 (비동기 래퍼, 데이터 페이로드 포함)
     """
     if not token:
         return False
@@ -31,6 +31,7 @@ async def send_fcm_notification(token: str, title: str, body: str):
                 title=title,
                 body=body,
             ),
+            data=data, # 👈 여기에 데이터를 담습니다!
             token=token,
         )
         

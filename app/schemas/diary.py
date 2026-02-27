@@ -82,10 +82,19 @@ class DiaryRead(DiaryBase):
         self.is_analyzed = self.emotion_analysis is not None
         return self
 
-# --- AI 분석 결과 수신용 (AI 서버 -> 백엔드) ---    
-# 추천 솔루션 하나하나를 정의하는 작은 모델
+# # --- AI 분석 결과 수신용 (AI 서버 -> 백엔드) ---    
+# # 추천 솔루션 하나하나를 정의하는 작은 모델
+# class AIRecommendation(SQLModel):
+#     activity_id: int  # 솔루션 ID
+
+# (수정 후)
 class AIRecommendation(SQLModel):
-    activity_id: int  # 솔루션 ID
+    act_content: str       # LLM이 생성한 엑티비티 내용
+    act_category: str      # (선택) LLM이 분류해 준 카테고리
+    # 🚀 AI가 이 액티비티의 성향을 분석해서 같이 넘겨주도록 추가!
+    is_active: bool
+    is_outdoor: bool
+    is_social: bool
 
 # 전체 결과 (리스트로 받도록 변경)
 class AIAnalysisResult(SQLModel):

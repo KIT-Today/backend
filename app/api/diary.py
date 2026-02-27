@@ -22,7 +22,7 @@ from app.api.deps import get_current_user
 from fastapi import UploadFile, HTTPException
 
 # 모델 & 스키마
-from app.models.tables import User, Diary, EmotionAnalysis, SolutionLog
+from app.models.tables import User, Diary, EmotionAnalysis, SolutionLog, Activity
 from app.schemas.diary import (
     DiaryCreate, 
     DiaryRead, 
@@ -209,6 +209,88 @@ async def delete_diary(
     
     return await crud_diary.delete_diary(db, diary_id, current_user.user_id)
 
+# # 6. AI 콜백
+# @router.post("/analysis-callback")
+# async def receive_ai_result(
+#     result: AIAnalysisResult,
+#     db: AsyncSession = Depends(get_session) 
+# ):
+#     print(f"📩 [From AI Server] 분석 결과 도착! (Diary ID: {result.diary_id})")
+
+#     # 1. 일기 조회 (존재 확인)
+#     diary = await db.get(Diary, result.diary_id)
+#     if not diary:
+#         return {"msg": "Diary not found"}
+    
+#     # 2. 유저의 총 일기 개수 확인 (3개 미만이면 솔루션 제공 안 함)
+#     count_statement = select(func.count(Diary.diary_id)).where(Diary.user_id == diary.user_id)
+#     count_result = await db.exec(count_statement)
+#     diary_count = count_result.one()
+
+#     # 3. MBI 카테고리 결정 (데이터 부족 시 NONE)
+#     final_mbi = result.mbi_category
+#     if diary_count < 3:
+#         final_mbi = "NONE" 
+
+#     # 4. EmotionAnalysis 저장
+#     emotion = EmotionAnalysis(
+#         diary_id=diary.diary_id,
+#         primary_emotion=result.primary_emotion,
+#         primary_score=result.primary_score,
+#         mbi_category=final_mbi,
+#         emotion_probs=result.emotion_probs,
+#         ai_message=result.ai_message
+#     )
+#     db.add(emotion)
+
+#     # 5. SolutionLog 저장 (조건: 일기가 3개 이상일 때)
+#     if diary_count >= 3:
+#         for rec in result.recommendations:
+#             new_solution = SolutionLog(
+#                 diary_id=diary.diary_id,
+#                 activity_id=rec.activity_id,
+#                 is_selected=False,
+#                 is_completed=False
+#             )
+#             db.add(new_solution)
+#         print(f"✅ 솔루션 저장 완료 (일기 개수: {diary_count}개)")
+#     else:
+#         print(f"ℹ️ 일기 부족({diary_count}개) -> 솔루션 추천 건너뜀 (총평은 저장됨)")
+    
+#     # [중요] 여기서 먼저 commit을 해야 방금 추가한 EmotionAnalysis가 DB에 들어갑니다!
+#     await db.commit()
+
+#     # 유저 정보를 가져와서 푸시 알림(FCM)을 보냅니다.
+#     user = await db.get(User, diary.user_id)
+#     if user and user.fcm_token:
+#         # 🔔 1. 일기 분석 완료 알림 (데이터 페이로드 포함!)
+#         await send_fcm_notification(
+#             token=user.fcm_token,
+#             title="일기 분석 완료 ✨",
+#             body="방금 작성하신 일기의 AI 분석이 끝났어요. 결과를 확인해볼까요?",
+#             data={
+#                 "type": "ANALYSIS_COMPLETE",      # 프론트가 어떤 알림인지 구분하기 위한 타입
+#                 "diary_id": str(diary.diary_id)   # 반드시 문자열(str)로 변환해서 보내야 함!
+#             }
+#         )
+    
+#     # 🔔 2. 메달 획득 조건 체크 및 알림 전송 (기존 로직 유지 + 데이터 추가 가능)
+#         new_achievement = await check_and_award_recovery_medal(db, diary.user_id)
+#         if new_achievement:
+#             print(f"🏅 유저 {diary.user_id} 메달 획득 성공!")
+#             await send_fcm_notification(
+#                 token=user.fcm_token,
+#                 title="새로운 메달 획득! 🏅",
+#                 body="마음이 한결 편안해지셨네요. 사용자페이지에서 획득한 메달을 확인해 보세요!",
+#                 data={
+#                     "type": "NEW_MEDAL",
+#                     "achieve_id": str(new_achievement.achieve_id)
+#                 }
+#             )
+
+#     return {"msg": "Analysis & Solutions saved successfully"}
+
+# (수정 후)
 # 6. AI 콜백
 @router.post("/analysis-callback")
 async def receive_ai_result(
@@ -232,7 +314,7 @@ async def receive_ai_result(
     if diary_count < 3:
         final_mbi = "NONE" 
 
-    # 4. EmotionAnalysis 저장
+    # 4. EmotionAnalysis 추가 (아직 DB 반영 안 됨)
     emotion = EmotionAnalysis(
         diary_id=diary.diary_id,
         primary_emotion=result.primary_emotion,
@@ -245,36 +327,83 @@ async def receive_ai_result(
 
     # 5. SolutionLog 저장 (조건: 일기가 3개 이상일 때)
     if diary_count >= 3:
+        # --- 🚀 [핵심 최적화 구간] ---
+        
+        # 5-1. AI가 추천한 엑티비티 내용만 리스트로 추출
+        recommended_contents = [rec.act_content for rec in result.recommendations]
+
+        # 5-2. DB에서 기존에 있는 엑티비티 한 번에 조회
+        statement = select(Activity).where(Activity.act_content.in_(recommended_contents))
+        existing_activities_result = await db.exec(statement)
+        
+        # 빠른 검색을 위해 딕셔너리로 변환 {"산책하기": Activity객체}
+        existing_dict = {act.act_content: act for act in existing_activities_result.all()}
+
+       # 5-3. DB에 없는 새로운 엑티비티 추려내기
+        new_activities = []
         for rec in result.recommendations:
+            if rec.act_content not in existing_dict:
+                new_act = Activity(
+                    act_content=rec.act_content,
+                    act_category=rec.act_category,
+                    
+                    # 🚀 AI가 준 속성값을 그대로 반영!
+                    is_active=rec.is_active,
+                    is_outdoor=rec.is_outdoor,
+                    is_social=rec.is_social,
+                    
+                    # 🚀 네 기획대로 숨기지 않고 바로 전체 공개!
+                    is_enabled=True, 
+                    source="LLM"
+                )
+                new_activities.append(new_act)
+                # 새로 만든 객체도 딕셔너리에 미리 넣어둠 (추천 목록 내 중복 방지)
+                existing_dict[rec.act_content] = new_act
+
+        # 5-4. 새로운 엑티비티가 있으면 DB에 한 번에 밀어넣고 ID 발급
+        if new_activities:
+            db.add_all(new_activities)
+            await db.flush() # db.commit() 전에 ID만 발급받는 기능
+
+        # 5-5. 최종적으로 SolutionLog 연결 및 추가
+        for rec in result.recommendations:
+            target_activity = existing_dict[rec.act_content]
+            
             new_solution = SolutionLog(
                 diary_id=diary.diary_id,
-                activity_id=rec.activity_id,
+                activity_id=target_activity.activity_id, # 이제 무조건 ID가 있음!
                 is_selected=False,
                 is_completed=False
             )
             db.add(new_solution)
-        print(f"✅ 솔루션 저장 완료 (일기 개수: {diary_count}개)")
+            
+        print(f"✅ 솔루션 저장 완료 (신규 엑티비티 {len(new_activities)}개 추가됨)")
     else:
         print(f"ℹ️ 일기 부족({diary_count}개) -> 솔루션 추천 건너뜀 (총평은 저장됨)")
     
-    # [중요] 여기서 먼저 commit을 해야 방금 추가한 EmotionAnalysis가 DB에 들어갑니다!
+    # [중요] 여기서 한번에 커밋! 
+    # (EmotionAnalysis, 새로 추가된 Activity, SolutionLog 모두 이때 실제 DB에 저장됨)
     await db.commit()
 
+    # -------------------------------------------------------------
+    # 이하 FCM 알림 및 메달 로직 (기존과 완전히 동일)
+    # -------------------------------------------------------------
+    
     # 유저 정보를 가져와서 푸시 알림(FCM)을 보냅니다.
     user = await db.get(User, diary.user_id)
     if user and user.fcm_token:
-        # 🔔 1. 일기 분석 완료 알림 (데이터 페이로드 포함!)
+        # 🔔 1. 일기 분석 완료 알림
         await send_fcm_notification(
             token=user.fcm_token,
             title="일기 분석 완료 ✨",
             body="방금 작성하신 일기의 AI 분석이 끝났어요. 결과를 확인해볼까요?",
             data={
-                "type": "ANALYSIS_COMPLETE",      # 프론트가 어떤 알림인지 구분하기 위한 타입
-                "diary_id": str(diary.diary_id)   # 반드시 문자열(str)로 변환해서 보내야 함!
+                "type": "ANALYSIS_COMPLETE",
+                "diary_id": str(diary.diary_id) 
             }
         )
     
-    # 🔔 2. 메달 획득 조건 체크 및 알림 전송 (기존 로직 유지 + 데이터 추가 가능)
+        # 🔔 2. 메달 획득 조건 체크 및 알림 전송
         new_achievement = await check_and_award_recovery_medal(db, diary.user_id)
         if new_achievement:
             print(f"🏅 유저 {diary.user_id} 메달 획득 성공!")

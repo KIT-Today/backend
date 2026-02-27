@@ -145,7 +145,7 @@ class SolutionLog(SQLModel, table=True):
     activity_id: int = Field(foreign_key="activities.activity_id")
     is_selected: bool = Field(default=False)
     is_completed: bool = Field(default=False)
-    i_message: Optional[str] = Field(default=None, sa_column=Column(Text))
+    ai_message: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=datetime.now)
 
     diary: Optional[Diary] = Relationship(back_populates="solution_logs")

@@ -18,6 +18,7 @@ class SolutionLogRead(SQLModel):
     act_content: str
     is_selected: bool
     is_completed: bool
+    ai_message: Optional[str] = None
 
     # DB 객체를 직접 수정하지 않고, 필요한 내용만 딕셔너리에 담아 반환
     @model_validator(mode='before')
@@ -35,6 +36,7 @@ class SolutionLogRead(SQLModel):
                 "act_content": act_content,
                 "is_selected": v.is_selected,
                 "is_completed": v.is_completed,
+                "ai_message": v.ai_message
             }
         return v
 
@@ -95,6 +97,7 @@ class AIRecommendation(SQLModel):
     is_active: bool
     is_outdoor: bool
     is_social: bool
+    ai_message: str
 
 # 전체 결과 (리스트로 받도록 변경)
 class AIAnalysisResult(SQLModel):

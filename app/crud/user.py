@@ -173,9 +173,8 @@ async def check_and_award_recovery_medal(session: AsyncSession, user_id: int):
     current = results[0]   # 이번 분석
     previous = results[1]  # 직전 분석
 
-    # 2. 상태 개선 조건 체크 (Burnout -> NORMAL)
-    burnout_states = ["EE", "DP", "PA_LOW"]
-    if previous.mbi_category in burnout_states and current.mbi_category == "NORMAL":
+    # 2. 상태 개선 조건 체크 (이전이 NORMAL이 아니었고 -> 현재가 NORMAL로 개선)
+    if previous.mbi_category != "NORMAL" and current.mbi_category == "NORMAL":
         
         # 3. 메달 마스터 정보 가져오기
         medal_stmt = select(Medal).where(Medal.medal_code == "RECOVERY_LIGHT")

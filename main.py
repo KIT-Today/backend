@@ -5,13 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 from app.models.tables import *
 
-# [수정] 비동기 스케줄러 라이브러리 사용
+# 비동기 스케줄러 라이브러리 사용
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# [수정] engine과 async_session_maker 가져오기
+# engine과 async_session_maker 가져오기
 from database import engine, async_session_maker 
 from app.api import auth, user, attendance, diary, solution, activity
 from app.services.notification import check_and_send_inactivity_alarms, send_custom_daily_alarm
+
+from app.services.ai_services import send_feedback_to_ai_server
 
 # 1. 비동기 스케줄러 설정
 scheduler = AsyncIOScheduler()
@@ -28,6 +30,12 @@ async def scheduled_custom_alarm_job():
     async with async_session_maker() as session:
         await send_custom_daily_alarm(session)
 
+# ai서버로 피드백 전송
+async def scheduled_feedback_job():
+    print("⏰ [피드백 전송] AI 서버로 피드백 데이터 전송 시도 중...")
+    async with async_session_maker() as session:
+        await send_feedback_to_ai_server(session)          
+
 # 2. 수명 주기 (Lifespan)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,9 +50,15 @@ async def lifespan(app: FastAPI):
     # scheduler.add_job(scheduled_job, 'cron', hour=0, minute=0)  # 원래 설정
     scheduler.add_job(scheduled_job, 'cron', hour=18, minute=30) # 테스트용 예시
 
-    # 2. [추가] 사용자 설정 알림 (1분마다 체크)
+    # 2. 사용자 설정 알림 (1분마다 체크)
     # 1분마다 돌면서 "지금 보내야 할 사람 있나?" 확인합니다.
     scheduler.add_job(scheduled_custom_alarm_job, 'cron', minute='*')
+
+    # 3. [수정됨] AI 서버로 피드백 전송 (매일 새벽 2시에 실행하여 14일 주기 대상자 탐색)
+    scheduler.add_job(scheduled_feedback_job, 'cron', hour=2, minute=0)
+    
+    # 💡 [테스트용 팁] 당장 1분마다 잘 걸러지는지 테스트하고 싶다면 아래 코드를 주석 해제해서 사용하세요!
+    # scheduler.add_job(scheduled_feedback_job, 'cron', minute='*')
     
     scheduler.start()
     print("✅ 자동 알림 스케줄러가 시작되었습니다!")
@@ -53,7 +67,7 @@ async def lifespan(app: FastAPI):
     
     # [꺼질 때 할 일]
     scheduler.shutdown()
-    print("💤 자동 알림 스케줄러가 종료되었습니다.")
+    print("💤 자동 알림 스케줄러가 종료되었습니다.")  
 
 # 3. FastAPI 앱 생성
 app = FastAPI(lifespan=lifespan)

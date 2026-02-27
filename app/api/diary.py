@@ -22,13 +22,14 @@ from app.api.deps import get_current_user
 from fastapi import UploadFile, HTTPException
 
 # 모델 & 스키마
-from app.models.tables import User, Diary, EmotionAnalysis, SolutionLog, Activity
+from app.models.tables import User, Diary, EmotionAnalysis, SolutionLog, Activity, DiaryFeedback
 from app.schemas.diary import (
     DiaryCreate, 
     DiaryRead, 
     DiaryUpdate, 
     AIAnalysisResult
 )
+from app.schemas.feedback import FeedbackCreate # 아까 만든 스키마
 from app.crud import diary as crud_diary
 
 router = APIRouter()
@@ -309,10 +310,15 @@ async def receive_ai_result(
     count_result = await db.exec(count_statement)
     diary_count = count_result.one()
 
-    # 3. MBI 카테고리 결정 (데이터 부족 시 NONE)
-    final_mbi = result.mbi_category
-    if diary_count < 3:
-        final_mbi = "NONE" 
+    # --- 🚀 [수정된 구간 1] MBI 카테고리 결정 ---
+    if result.primary_emotion == "긍정":
+        final_mbi = "NORMAL"
+    else: # "부정"인 경우
+        if diary_count < 3:
+            final_mbi = "NONE" # 데이터 부족 시
+        else:
+            final_mbi = result.mbi_category 
+    # -------------------------------------------
 
     # 4. EmotionAnalysis 추가 (아직 DB 반영 안 됨)
     emotion = EmotionAnalysis(
@@ -321,14 +327,12 @@ async def receive_ai_result(
         primary_score=result.primary_score,
         mbi_category=final_mbi,
         emotion_probs=result.emotion_probs,
-        ai_message=result.ai_message
+        ai_message=result.ai_message # 이 ai_message는 EmotionAnalysis용 (기존 유지)
     )
     db.add(emotion)
 
     # 5. SolutionLog 저장 (조건: 일기가 3개 이상일 때)
     if diary_count >= 3:
-        # --- 🚀 [핵심 최적화 구간] ---
-        
         # 5-1. AI가 추천한 엑티비티 내용만 리스트로 추출
         recommended_contents = [rec.act_content for rec in result.recommendations]
 
@@ -339,25 +343,20 @@ async def receive_ai_result(
         # 빠른 검색을 위해 딕셔너리로 변환 {"산책하기": Activity객체}
         existing_dict = {act.act_content: act for act in existing_activities_result.all()}
 
-       # 5-3. DB에 없는 새로운 엑티비티 추려내기
+        # 5-3. DB에 없는 새로운 엑티비티 추려내기
         new_activities = []
         for rec in result.recommendations:
             if rec.act_content not in existing_dict:
                 new_act = Activity(
                     act_content=rec.act_content,
                     act_category=rec.act_category,
-                    
-                    # 🚀 AI가 준 속성값을 그대로 반영!
                     is_active=rec.is_active,
                     is_outdoor=rec.is_outdoor,
                     is_social=rec.is_social,
-                    
-                    # 🚀 네 기획대로 숨기지 않고 바로 전체 공개!
                     is_enabled=True, 
                     source="LLM"
                 )
                 new_activities.append(new_act)
-                # 새로 만든 객체도 딕셔너리에 미리 넣어둠 (추천 목록 내 중복 방지)
                 existing_dict[rec.act_content] = new_act
 
         # 5-4. 새로운 엑티비티가 있으면 DB에 한 번에 밀어넣고 ID 발급
@@ -371,9 +370,10 @@ async def receive_ai_result(
             
             new_solution = SolutionLog(
                 diary_id=diary.diary_id,
-                activity_id=target_activity.activity_id, # 이제 무조건 ID가 있음!
+                activity_id=target_activity.activity_id,
                 is_selected=False,
-                is_completed=False
+                is_completed=False,
+                ai_message=rec.ai_message  # --- 🚀 [수정된 구간 2] 솔루션별 AI 메시지 추가 ---
             )
             db.add(new_solution)
             
@@ -382,14 +382,12 @@ async def receive_ai_result(
         print(f"ℹ️ 일기 부족({diary_count}개) -> 솔루션 추천 건너뜀 (총평은 저장됨)")
     
     # [중요] 여기서 한번에 커밋! 
-    # (EmotionAnalysis, 새로 추가된 Activity, SolutionLog 모두 이때 실제 DB에 저장됨)
     await db.commit()
 
     # -------------------------------------------------------------
-    # 이하 FCM 알림 및 메달 로직 (기존과 완전히 동일)
+    # 이하 FCM 알림 및 메달 로직 (기존과 동일하므로 생략 없이 그대로 복사됨)
     # -------------------------------------------------------------
     
-    # 유저 정보를 가져와서 푸시 알림(FCM)을 보냅니다.
     user = await db.get(User, diary.user_id)
     if user and user.fcm_token:
         # 🔔 1. 일기 분석 완료 알림
@@ -438,3 +436,34 @@ async def delete_diary_photo(
         await db.refresh(db_diary)
         
     return {"message": "사진이 성공적으로 삭제되었습니다."}
+
+# 8. 별점 피드백 db 저장하는 api
+@router.post("/{diary_id}/feedback")
+async def submit_diary_feedback(
+    diary_id: int,
+    feedback_in: FeedbackCreate,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. 일기 소유권 확인
+    diary = await db.get(Diary, diary_id)
+    if not diary or diary.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="권한이 없거나 일기를 찾을 수 없습니다.")
+
+    # 2. 이미 피드백을 했는지 확인
+    statement = select(DiaryFeedback).where(DiaryFeedback.diary_id == diary_id)
+    result = await db.exec(statement)
+    if result.first():
+        raise HTTPException(status_code=400, detail="이미 피드백을 제출하셨습니다.")
+
+    # 3. 피드백 저장
+    new_feedback = DiaryFeedback(
+        diary_id=diary_id,
+        ai_message_rating=feedback_in.ai_message_rating,
+        mbi_category_rating=feedback_in.mbi_category_rating,
+        is_sent_to_ai=False # 스케줄러 대기 상태
+    )
+    db.add(new_feedback)
+    await db.commit()
+
+    return {"message": "피드백이 성공적으로 저장되었습니다."}

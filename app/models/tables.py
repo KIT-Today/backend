@@ -145,6 +145,7 @@ class SolutionLog(SQLModel, table=True):
     activity_id: int = Field(foreign_key="activities.activity_id")
     is_selected: bool = Field(default=False)
     is_completed: bool = Field(default=False)
+    i_message: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=datetime.now)
 
     diary: Optional[Diary] = Relationship(back_populates="solution_logs")
@@ -219,4 +220,19 @@ class EmailVerification(SQLModel, table=True):
     email: str = Field(primary_key=True, max_length=100)
     code: str = Field(max_length=6) # 인증번호 6자리
     is_verified: bool = Field(default=False) # 인증 성공 여부
+    created_at: datetime = Field(default_factory=datetime.now)
+
+# 13. DiaryFeedback (분석 결과 피드백 테이블)
+class DiaryFeedback(SQLModel, table=True):
+    __tablename__ = "diary_feedbacks"
+
+    feedback_id: Optional[int] = Field(default=None, primary_key=True)
+    diary_id: int = Field(foreign_key="diaries.diary_id", unique=True, index=True)
+    
+    ai_message_rating: int = Field(ge=1, le=5)  # 1~5점
+    mbi_category_rating: int = Field(ge=1, le=5) # 1~5점
+    
+    # AI 서버로 전송했는지 여부 (스케줄러에서 사용)
+    is_sent_to_ai: bool = Field(default=False)
+    
     created_at: datetime = Field(default_factory=datetime.now)

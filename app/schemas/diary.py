@@ -2,7 +2,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel
-from pydantic import model_validator # [중요] 여기서 가져옴
+from pydantic import model_validator, field_validator # [중요] 여기서 가져옴
 
 # --- [하위 모델] 읽기 전용 (AI 분석 결과) 조회 응답 (백엔드 -> 프론트) ---
 class EmotionAnalysisRead(SQLModel):
@@ -11,6 +11,15 @@ class EmotionAnalysisRead(SQLModel):
     mbi_category: str
     ai_message: Optional[str] = None #프론트에게 AI메시지 전달
     emotion_probs: Dict[str, Any]
+
+    # 👇 [추가된 부분] 프론트로 보내기 직전에 -1 값을 걸러내는 로직
+    @field_validator("emotion_probs")
+    @classmethod
+    def filter_invalid_probs(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        if isinstance(v, dict):
+            # 값이 -1 이거나 -1.0 인 항목은 제외하고 새로운 딕셔너리를 반환합니다.
+            return {k: val for k, val in v.items() if val not in (-1, -1.0)}
+        return v
 
 class SolutionLogRead(SQLModel):
     log_id: int
@@ -89,7 +98,6 @@ class DiaryRead(DiaryBase):
 # class AIRecommendation(SQLModel):
 #     activity_id: int  # 솔루션 ID
 
-# (수정 후)
 class AIRecommendation(SQLModel):
     act_content: str       # LLM이 생성한 엑티비티 내용
     act_category: str      # (선택) LLM이 분류해 준 카테고리

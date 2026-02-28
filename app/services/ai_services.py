@@ -5,7 +5,7 @@ from datetime import datetime # 추가: 날짜 계산을 위해 필요합니다.
 from sqlmodel.ext.asyncio.session import AsyncSession
 from database import get_session # 세션 생성 함수 임포트
 from app.crud.diary import get_recent_diaries_for_ai
-from app.models.tables import DiaryFeedback, Diary, User
+from app.models.tables import DiaryFeedback, Diary, User, EmotionAnalysis
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
@@ -58,11 +58,12 @@ async def request_diary_analysis(diary_id: int, user_id: int, persona: int):
 async def send_feedback_to_ai_server(db: AsyncSession):
     """매일 한 번씩 돌며, 오늘 가입일 기준 14일 주기(14, 28, 42...)가 된 유저의 피드백만 AI 서버로 전송합니다."""
     
-    # 1. 전송 안 된 피드백과 함께 유저의 가입일(created_at)도 가져옵니다.
+    # 1. [수정] select에 EmotionAnalysis.mbi_category 추가 (user_id 제거)
     statement = (
-        select(DiaryFeedback, Diary.user_id, User.created_at)
+        select(DiaryFeedback, User.created_at, EmotionAnalysis.mbi_category)
         .join(Diary, DiaryFeedback.diary_id == Diary.diary_id)
-        .join(User, Diary.user_id == User.id) # 유저 테이블 조인
+        .join(User, Diary.user_id == User.user_id) # 기존 User.id 오타를 User.user_id로 변경
+        .join(EmotionAnalysis, Diary.diary_id == EmotionAnalysis.diary_id) # 감정 결과 가져오기 위해 조인 추가
         .where(DiaryFeedback.is_sent_to_ai == False)
     )
     result = await db.exec(statement)
@@ -77,7 +78,8 @@ async def send_feedback_to_ai_server(db: AsyncSession):
     payload = []
     feedbacks_to_update = [] # 전송 성공 시 업데이트할 피드백 객체들만 따로 모아둡니다.
 
-    for feedback, user_id, created_at in feedbacks_data:
+    # [수정] user_id 대신 predicted_mbi_category로 데이터 받기
+    for feedback, created_at, predicted_mbi_category in feedbacks_data: 
         # 가입일만 추출 (시간 제외)
         join_date = created_at.date() if isinstance(created_at, datetime) else created_at
         
@@ -86,9 +88,10 @@ async def send_feedback_to_ai_server(db: AsyncSession):
 
         # 가입일이 오늘(0일)이 아니고, 14의 배수인 경우만 리스트에 추가합니다.
         if days_since_join > 0 and days_since_join % 14 == 0:
+            # AI 서버가 요구한 데이터 형식으로 payload 구성 
             payload.append({
                 "diary_id": feedback.diary_id,
-                "user_id": user_id,
+                "predicted_mbi_category": predicted_mbi_category, 
                 "ai_message_rating": feedback.ai_message_rating,
                 "mbi_category_rating": feedback.mbi_category_rating
             })
@@ -100,8 +103,7 @@ async def send_feedback_to_ai_server(db: AsyncSession):
         return
 
     # 3. AI 서버로 전송
-    # URL 받아서 넣기
-    ai_feedback_url = "http://localhost:8001/???" # AI 서버 API 주소
+    ai_feedback_url = "http://localhost:8001/feedback/batch" # AI 서버 API 주소
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(ai_feedback_url, json={"feedbacks": payload}, timeout=10.0)

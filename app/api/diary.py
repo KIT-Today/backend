@@ -135,6 +135,7 @@ async def update_diary(
     input_type: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     keywords_json: Optional[str] = Form(None),
+    persona: Optional[int] = Form(None), # ✨ 1. 여기에 persona 파라미터 추가!
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -144,15 +145,10 @@ async def update_diary(
     db_diary = await crud_diary.get_diary(db, diary_id, current_user.user_id)
     
     # [수정 전] 기존 URL 저장
-    # [중요!] 여기가 바로 "왼손에 헌 옷 쥐기" 단계입니다.
-    # DB를 바꾸기 전에, 현재 주소를 'old_image_url'이라는 변수에 복사해둡니다.
     old_image_url = db_diary.image_url
     new_image_url = db_diary.image_url
 
-# ... (새 사진 업로드 과정) ...
-
     # [순서 변경 1] JSON 검사 먼저!
-    # 1. 키워드 파싱 (예외처리 포함)
     keywords = None
     if keywords_json:
         try:
@@ -161,11 +157,7 @@ async def update_diary(
             raise HTTPException(status_code=400, detail="keywords_json 형식이 올바르지 않습니다.")
         
     # [순서 변경 2] 이미지 업로드
-    # 2. 새 이미지가 있다면 '먼저' 업로드 (안전하게!)
     if image:
-        # ---------------------------------------------------------
-        # [추가] 이미지 용량 및 형식 체크 로직
-        # ---------------------------------------------------------
         image.file.seek(0, 2)
         size = image.file.tell()
         image.file.seek(0) # 필수 복구
@@ -175,7 +167,6 @@ async def update_diary(
         
         if not image.content_type.startswith("image/"):
              raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
-        # ---------------------------------------------------------
 
         new_image_url = await anyio.to_thread.run_sync(upload_image_to_s3, image)
 
@@ -184,18 +175,18 @@ async def update_diary(
     diary_in = DiaryUpdate(input_type=input_type, content=content, keywords=keywords)
     
     # 3. DB 업데이트 - "새 주소"로 업데이트합니다.
-    # 이제 db_diary 객체 안의 주소는 새것으로 바뀌었지만,
-    # 위에서 만든 'old_image_url' 변수는 여전히 옛날 주소를 기억하고 있습니다!
     updated_diary, is_changed = await crud_diary.update_diary_with_image(db, db_diary, diary_in, new_image_url)
 
-    # 모든 게 성공했으니, 아까 챙겨둔 'old_image_url'을 이용해 S3에서 지웁니다.
     # 4. 모든 처리가 성공했다면, 그때 비로소 '기존 이미지' 삭제 (백그라운드 처리 추천)
     if image and old_image_url and (old_image_url != new_image_url):
-        # BackgroundTasks를 이용해 응답 후 삭제 (사용자 대기 시간 단축)
         background_tasks.add_task(delete_image_from_s3, old_image_url)
 
     if is_changed:
-        background_tasks.add_task(request_diary_analysis, updated_diary.diary_id, current_user.user_id)
+        # ✨ 2. AI에게 보낼 페르소나를 결정하고 background_tasks에 파라미터로(final_persona) 넘겨주기!
+        target_persona = persona if persona is not None else current_user.persona
+        final_persona = target_persona if target_persona is not None else 1
+
+        background_tasks.add_task(request_diary_analysis, updated_diary.diary_id, current_user.user_id, final_persona)
         print(f"🔄 일기 {updated_diary.diary_id} 내용 변경됨 -> AI 분석 요청 전송")
 
     return updated_diary

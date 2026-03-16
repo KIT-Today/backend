@@ -388,7 +388,10 @@ async def receive_ai_result(
             body="방금 작성하신 일기의 AI 분석이 끝났어요. 결과를 확인해볼까요?",
             data={
                 "type": "ANALYSIS_COMPLETE",
-                "diary_id": str(diary.diary_id) 
+                "diary_id": str(diary.diary_id), 
+                "year": str(diary.created_at.year),   # 추가된 부분
+                "month": str(diary.created_at.month), # 추가된 부분
+                "day": str(diary.created_at.day)      # 추가된 부분
             }
         )
     

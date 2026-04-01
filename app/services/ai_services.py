@@ -1,5 +1,6 @@
 # app/services/ai_services.py
 import httpx
+import os
 import logging
 from datetime import datetime # 추가: 날짜 계산을 위해 필요합니다.
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -7,6 +8,7 @@ from database import get_session # 세션 생성 함수 임포트
 from app.crud.diary import get_recent_diaries_for_ai
 from app.models.tables import DiaryFeedback, Diary, User, EmotionAnalysis
 from sqlmodel import select
+
 
 logger = logging.getLogger(__name__)
 
@@ -119,3 +121,24 @@ async def send_feedback_to_ai_server(db: AsyncSession):
             
     except Exception as e:
         print(f"❌ 피드백 전송 실패: {str(e)}")
+
+
+# 일기 삭제 시 ai서버에게 일기id와 함께 알림.
+async def notify_diary_deleted_to_ai(diary_id: int):
+    """
+    일기가 삭제되었을 때 AI 서버에 분석 중단/취소를 요청합니다.
+    """
+    # 💡 이렇게 질문자님 말씀대로 직접 API 주소를 적어주면 됩니다!
+    ai_cancel_url = f"http://localhost:8001/analysis/cancel/{diary_id}"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(ai_cancel_url, timeout=5.0) 
+            
+            if response.status_code in [200, 204]:
+                print(f"✅ [AI Server] 일기({diary_id}) 분석 취소 요청 성공")
+            else:
+                print(f"⚠️ [AI Server] 분석 취소 요청 실패 (상태 코드: {response.status_code})")
+                
+    except Exception as e:
+        print(f"🚨 [AI Server] 분석 취소 요청 중 통신 오류 발생: {e}")

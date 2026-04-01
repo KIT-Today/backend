@@ -11,6 +11,7 @@ from app.services.s3_service import upload_image_to_s3, delete_image_from_s3
 from app.services.ai_services import request_diary_analysis
 from app.crud.user import check_and_award_recovery_medal
 from app.core.fcm import send_fcm_notification
+from app.services.ai_services import notify_diary_deleted_to_ai
 
 # DB 관련 도구들
 from sqlmodel import func, select
@@ -195,11 +196,19 @@ async def update_diary(
 @router.delete("/{diary_id}")
 async def delete_diary(
     diary_id: int = Path(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(), # ✨ 1. BackgroundTasks 주입
     db: AsyncSession = Depends(get_session), 
     current_user: User = Depends(get_current_user)
 ):
-    
-    return await crud_diary.delete_diary(db, diary_id, current_user.user_id)
+    # 기존 일기 삭제 로직 (DB 및 S3 이미지 삭제 처리)
+    result = await crud_diary.delete_diary(db, diary_id, current_user.user_id)
+
+    # ✨ 2. AI 서버로 취소 신호를 백그라운드에서 전송 (사용자는 기다리지 않음)
+    background_tasks.add_task(notify_diary_deleted_to_ai, diary_id)
+
+    return result
+
+
 
 # # 6. AI 콜백
 # @router.post("/analysis-callback")

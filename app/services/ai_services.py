@@ -12,12 +12,16 @@ from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 
+# ✨ [추가된 부분] .env 파일에서 AI 서버 주소를 가져옵니다. 
+# 만약 .env에 값이 없으면 기본값으로 "http://localhost:8001"을 사용합니다.
+AI_SERVER_URL = os.getenv("AI_SERVER_URL", "http://localhost:8001")
+
 async def request_diary_analysis(diary_id: int, user_id: int, persona: int):
     """
     [안전 버전] 2주치 데이터를 모아 AI 서버에 비동기로 분석을 요청합니다.
     """
     # 이 주소가 아닐까? -> 확인하고 실제 주소로 변경!
-    ai_url = "http://localhost:8001/analyze"
+    ai_url = f"{AI_SERVER_URL}/analyze"
 
     # API 응답 후에도 안전하게 실행되도록 함수 내부에서 새 세션을 생성합니다.
     async for db in get_session():
@@ -105,7 +109,7 @@ async def send_feedback_to_ai_server(db: AsyncSession):
         return
 
     # 3. AI 서버로 전송
-    ai_feedback_url = "http://localhost:8001/feedback/batch" # AI 서버 API 주소
+    ai_feedback_url = f"{AI_SERVER_URL}/feedback/batch" # AI 서버 API 주소
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(ai_feedback_url, json={"feedbacks": payload}, timeout=10.0)
@@ -123,13 +127,13 @@ async def send_feedback_to_ai_server(db: AsyncSession):
         print(f"❌ 피드백 전송 실패: {str(e)}")
 
 
-# 일기 삭제 시 ai서버에게 일기id와 함께 알림.
+# 3. 일기 삭제 시 ai서버에게 일기id와 함께 알림.
 async def notify_diary_deleted_to_ai(diary_id: int):
     """
     일기가 삭제되었을 때 AI 서버에 분석 중단/취소를 요청합니다.
     """
     # 💡 이렇게 질문자님 말씀대로 직접 API 주소를 적어주면 됩니다!
-    ai_cancel_url = f"http://localhost:8001/analysis/cancel/{diary_id}"
+    ai_cancel_url = f"{AI_SERVER_URL}/analysis/cancel/{diary_id}"
     
     try:
         async with httpx.AsyncClient() as client:

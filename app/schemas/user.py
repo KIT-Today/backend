@@ -6,7 +6,8 @@ from datetime import datetime, time
 # 1. 회원가입할 때 받을 데이터 (Request)
 class UserCreate(BaseModel):
     email: str
-    password: str 
+    password: str = Field(min_length=6, max_length=100)
+
     nickname: str = Field(min_length=1, max_length=20)
 
 # 2. 로그인할 때 받을 데이터 (Request)

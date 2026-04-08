@@ -305,19 +305,11 @@ async def receive_ai_result(
     if not diary:
         return {"msg": "Diary not found"}
     
-    # 2. 유저의 총 일기 개수 확인 (3개 미만이면 솔루션 제공 안 함)
-    count_statement = select(func.count(Diary.diary_id)).where(Diary.user_id == diary.user_id)
-    count_result = await db.exec(count_statement)
-    diary_count = count_result.one()
-
-    # --- 🚀 [수정된 구간 1] MBI 카테고리 결정 ---
+    # ---  MBI 카테고리 결정 ---
     if result.primary_emotion == "긍정":
         final_mbi = "NORMAL"
-    else: # "부정"인 경우
-        if diary_count < 3:
-            final_mbi = "NONE" # 데이터 부족 시
-        else:
-            final_mbi = result.mbi_category 
+    else:
+        final_mbi = result.mbi_category 
     # -------------------------------------------
 
     # 4. EmotionAnalysis 추가 (아직 DB 반영 안 됨)
@@ -327,59 +319,57 @@ async def receive_ai_result(
         primary_score=result.primary_score,
         mbi_category=final_mbi,
         emotion_probs=result.emotion_probs,
-        ai_message=result.ai_message # 이 ai_message는 EmotionAnalysis용 (기존 유지)
+        ai_message=result.ai_message 
     )
     db.add(emotion)
 
-    # 5. SolutionLog 저장 (조건: 일기가 3개 이상일 때)
-    if diary_count >= 3:
-        # 5-1. AI가 추천한 엑티비티 내용만 리스트로 추출
-        recommended_contents = [rec.act_content for rec in result.recommendations]
+    # 5. SolutionLog 저장 
+   
+    # 5-1. AI가 추천한 엑티비티 내용만 리스트로 추출
+    recommended_contents = [rec.act_content for rec in result.recommendations]
 
-        # 5-2. DB에서 기존에 있는 엑티비티 한 번에 조회
-        statement = select(Activity).where(Activity.act_content.in_(recommended_contents))
-        existing_activities_result = await db.exec(statement)
+    # 5-2. DB에서 기존에 있는 엑티비티 한 번에 조회
+    statement = select(Activity).where(Activity.act_content.in_(recommended_contents))
+    existing_activities_result = await db.exec(statement)
         
-        # 빠른 검색을 위해 딕셔너리로 변환 {"산책하기": Activity객체}
-        existing_dict = {act.act_content: act for act in existing_activities_result.all()}
+    # 빠른 검색을 위해 딕셔너리로 변환 {"산책하기": Activity객체}
+    existing_dict = {act.act_content: act for act in existing_activities_result.all()}
 
-        # 5-3. DB에 없는 새로운 엑티비티 추려내기
-        new_activities = []
-        for rec in result.recommendations:
-            if rec.act_content not in existing_dict:
-                new_act = Activity(
-                    act_content=rec.act_content,
-                    act_category=rec.act_category,
-                    is_active=rec.is_active,
-                    is_outdoor=rec.is_outdoor,
-                    is_social=rec.is_social,
-                    is_enabled=True, 
-                    source="LLM"
-                )
-                new_activities.append(new_act)
-                existing_dict[rec.act_content] = new_act
-
-        # 5-4. 새로운 엑티비티가 있으면 DB에 한 번에 밀어넣고 ID 발급
-        if new_activities:
-            db.add_all(new_activities)
-            await db.flush() # db.commit() 전에 ID만 발급받는 기능
-
-        # 5-5. 최종적으로 SolutionLog 연결 및 추가
-        for rec in result.recommendations:
-            target_activity = existing_dict[rec.act_content]
-            
-            new_solution = SolutionLog(
-                diary_id=diary.diary_id,
-                activity_id=target_activity.activity_id,
-                is_selected=False,
-                is_completed=False,
-                ai_message=rec.ai_message  # --- 🚀 [수정된 구간 2] 솔루션별 AI 메시지 추가 ---
+    # 5-3. DB에 없는 새로운 엑티비티 추려내기
+    new_activities = []
+    for rec in result.recommendations:
+        if rec.act_content not in existing_dict:
+            new_act = Activity(
+                act_content=rec.act_content,
+                act_category=rec.act_category,
+                is_active=rec.is_active,
+                is_outdoor=rec.is_outdoor,
+                is_social=rec.is_social,
+                is_enabled=True, 
+                source="LLM"
             )
-            db.add(new_solution)
+            new_activities.append(new_act)
+            existing_dict[rec.act_content] = new_act
+
+    # 5-4. 새로운 엑티비티가 있으면 DB에 한 번에 밀어넣고 ID 발급
+    if new_activities:
+        db.add_all(new_activities)
+        await db.flush() # db.commit() 전에 ID만 발급받는 기능
+
+    # 5-5. 최종적으로 SolutionLog 연결 및 추가
+    for rec in result.recommendations:
+        target_activity = existing_dict[rec.act_content]
             
-        print(f"✅ 솔루션 저장 완료 (신규 엑티비티 {len(new_activities)}개 추가됨)")
-    else:
-        print(f"ℹ️ 일기 부족({diary_count}개) -> 솔루션 추천 건너뜀 (총평은 저장됨)")
+        new_solution = SolutionLog(
+            diary_id=diary.diary_id,
+            activity_id=target_activity.activity_id,
+            is_selected=False,
+            is_completed=False,
+            ai_message=rec.ai_message  
+        )
+        db.add(new_solution)
+            
+    print(f"✅ 솔루션 저장 완료 (신규 엑티비티 {len(new_activities)}개 추가됨)")
     
     # [중요] 여기서 한번에 커밋! 
     await db.commit()

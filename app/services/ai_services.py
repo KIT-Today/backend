@@ -30,15 +30,30 @@ async def request_diary_analysis(diary_id: int, user_id: int, persona: int):
             recent_diaries = await get_recent_diaries_for_ai(db, user_id)
             
             # 2. AI 서버 규격에 맞게 가공 (Content + Keywords 포함)
-            history_data = [
-                {
-                    "diary_id": d.diary_id,
-                    "content": d.content,
-                    "keywords": d.keywords,
-                    "created_at": d.created_at.isoformat()
-                }
-                for d in recent_diaries
-            ]
+            # 🚀 [수정] 방금 쓴 일기와 과거 일기를 구분하여 데이터 가공
+            history_data = []
+            for d in recent_diaries:
+                if d.diary_id == diary_id:
+                    # 이번에 작성한 일기 (텍스트 포함)
+                    history_data.append({
+                        "diary_id": d.diary_id,
+                        "type": "CURRENT", # AI 서버에서 구분할 수 있게 명시 (지금 작성한 일기라는 의미)
+                        "content": d.content,
+                        "keywords": d.keywords,
+                        "created_at": d.created_at.isoformat()
+                    })
+                else:
+                    # 과거 일기 (분석 결과만 포함, 텍스트 제외)
+                    analysis = d.emotion_analysis
+                    history_data.append({
+                        "diary_id": d.diary_id,
+                        "type": "PAST_ANALYSIS", # 과거 데이터들
+                        "primary_emotion": analysis.primary_emotion if analysis else "NONE",
+                        "primary_score": analysis.primary_score if analysis else 0.0,    
+                        "mbi_category": analysis.mbi_category if analysis else "NONE",
+                        "emotion_probs": analysis.emotion_probs if analysis else {},    
+                        "created_at": d.created_at.isoformat()
+                    })
 
             # 3. Payload 구성
             payload = {

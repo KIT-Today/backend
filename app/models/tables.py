@@ -123,15 +123,13 @@ class Activity(SQLModel, table=True):
     activity_id: Optional[int] = Field(default=None, primary_key=True)
     # 검색 속도를 높이고 중복 저장을 막기 위해 unique와 index를 걸어줍니다.
     act_content: str = Field(max_length=255, unique=True, index=True)
-    act_category: str = Field(max_length=20)
+    act_category: Optional[str] = Field(default=None, max_length=20)
     
-    is_active: bool = Field(default=False)
-    is_outdoor: bool = Field(default=False)
-    is_social: bool = Field(default=False)
+    is_active: Optional[bool] = Field(default=False)
+    is_outdoor: Optional[bool] = Field(default=False)
+    is_social: Optional[bool] = Field(default=False)
 
-    # 기본값은 False로 두어, LLM이 만든 임의의 데이터가 
-    # 프론트엔드의 '전체 활동 목록'에 마구잡이로 노출되지 않도록 방어합니다.
-    is_enabled: bool = Field(default=False) 
+    is_enabled: Optional[bool] = Field(default=False)
     
     # (선택) LLM이 만든 데이터인지 출처를 남겨두면 나중에 데이터 분석할 때 좋습니다.
     source: str = Field(default="SYSTEM", max_length=20) # 'SYSTEM' or 'LLM'

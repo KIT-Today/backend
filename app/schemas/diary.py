@@ -2,7 +2,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel
-from pydantic import model_validator, field_validator # [중요] 여기서 가져옴
+from pydantic import model_validator, field_validator, Field 
 
 # --- [하위 모델] 읽기 전용 (AI 분석 결과) 조회 응답 (백엔드 -> 프론트) ---
 class EmotionAnalysisRead(SQLModel):
@@ -54,7 +54,8 @@ class SolutionLogRead(SQLModel):
 # 1. 기본 속성
 class DiaryBase(SQLModel):
     input_type: str  # 'TEXT', 'KEYWORD', 'HYBRID'
-    content: Optional[str] = None
+    # 일기 수 제한.
+    content: Optional[str] = Field(default=None, max_length=2000)
     keywords: Optional[Dict[str, Any]] = None
 
 # 2. 생성 요청 (프론트 -> 백엔드)
@@ -100,12 +101,13 @@ class DiaryRead(DiaryBase):
 
 class AIRecommendation(SQLModel):
     act_content: str       # LLM이 생성한 엑티비티 내용
-    act_category: str      # (선택) LLM이 분류해 준 카테고리
-    # 🚀 AI가 이 액티비티의 성향을 분석해서 같이 넘겨주도록 추가!
-    is_active: bool
-    is_outdoor: bool
-    is_social: bool
     ai_message: str
+
+# 선택지 부분
+    act_category: Optional[str] = None    
+    is_active: Optional[bool] = False
+    is_outdoor: Optional[bool] = False
+    is_social: Optional[bool] = False
 
 # 전체 결과 (리스트로 받도록 변경)
 class AIAnalysisResult(SQLModel):

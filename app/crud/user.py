@@ -79,10 +79,12 @@ async def update_user_info(session: AsyncSession, user_id: int, user_in: UserInf
     if user_in.persona is not None:
         user.persona = user_in.persona
     
+    # 전체 푸시 알림 변경 시 -> 
     if user_in.is_push_enabled is not None:
         user.is_push_enabled = user_in.is_push_enabled
         if user_in.is_push_enabled is False:
             user.fcm_token = None
+            user.is_daily_alarm_on = False  # 👈 전체 알림이 꺼지면 데일리 알림 기능도 False로 변경
 
     if user_in.fcm_token is not None:
         user.fcm_token = user_in.fcm_token    

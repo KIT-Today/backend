@@ -169,13 +169,11 @@ async def delete_diary(db: AsyncSession, diary_id: int, user_id: int):
 # 6. 14일 일기 최근 데이터 조회 (이미 비동기임, 그대로 유지)
 async def get_recent_diaries_for_ai(db: AsyncSession, user_id: int, days: int = 14):
     two_weeks_ago = datetime.now() - timedelta(days=days)
-    # [참고] 여기서는 selectinload를 안 썼지만 괜찮습니다.
-    # AI 서버로 보낼 때는 emotion_analysis나 solution_logs 같은 관계 데이터를 안 보내고
-    # 오직 content, keywords 같은 기본 컬럼만 쓰기 때문입니다.
     statement = (
         select(Diary)
         .where(Diary.user_id == user_id)
         .where(Diary.created_at >= two_weeks_ago)
+        .options(selectinload(Diary.emotion_analysis)) # 분석 결과 가져오기 위해서
         .order_by(Diary.created_at.desc())
     )
     result = await db.exec(statement)

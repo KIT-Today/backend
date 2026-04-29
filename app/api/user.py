@@ -147,6 +147,41 @@ async def delete_my_account(
         
     return {"message": "회원 탈퇴가 완료되었습니다. 이용해주셔서 감사합니다."}
 
+
+# 미접속일 수 강제로 7일로 세팅
+from datetime import datetime, timedelta, timezone
+
+@router.patch("/test/force-inactive")
+async def force_inactive_days(
+    days: int = 7, # 기본값을 7일로 설정
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    [테스트용] 현재 로그인한 유저의 마지막 접속일(last_att_date)을 조작하여
+    미접속 일수(inactive_days)를 강제로 세팅하고, 연속 출석(streak)을 초기화합니다.
+    """
+    # KST 기준 오늘 날짜 구하기
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).date()
+    
+    # 입력받은 days만큼 과거로 돌림
+    target_date = today - timedelta(days=days)
+    
+    # DB 업데이트: 접속일 조작 및 스트릭 초기화
+    current_user.last_att_date = target_date
+    current_user.current_streak = 0  # ✨ 스트릭을 0으로 강제 초기화하는 코드 추가!
+    
+    db.add(current_user)
+    await db.commit()
+    await db.refresh(current_user)
+    
+    return {
+        "message": f"마지막 접속일이 {target_date}로 변경되었고, 연속 출석일이 0으로 초기화되었습니다.",
+        "expected_inactive_days": days,
+        "current_streak": 0
+    }
+
 # 👇 [테스트용 버튼]
 @router.post("/test/send-inactivity-push")
 async def test_send_inactivity_push( 
@@ -169,3 +204,4 @@ async def read_splash_message(db: AsyncSession = Depends(get_session)):
     if not message:
         return {"msg_content": "오늘도 당신을 기다렸어요."}
     return message
+

@@ -1,4 +1,11 @@
 # app/api/diary.py
+
+# 테스트용을 위해서.
+from datetime import datetime, timedelta
+from fastapi import Form
+from sqlmodel import select
+from app.models.tables import Attendance
+
 import anyio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, Form, HTTPException, BackgroundTasks
@@ -460,3 +467,70 @@ async def submit_diary_feedback(
     await db.commit()
 
     return {"message": "피드백이 성공적으로 저장되었습니다."}
+
+
+
+# 9. [테스트용] 타임머신 일기 작성 API (키워드 지원)
+@router.post("/test/time-machine")
+async def create_time_machine_diary(
+    background_tasks: BackgroundTasks,
+    days_ago: int = Form(..., description="며칠 전 일기인가요? (0=오늘, 1=어제, 3=3일전)"),
+    input_type: str = Form("TEXT", description="'TEXT', 'KEYWORD', 'HYBRID' 중 택 1"),
+    content: Optional[str] = Form(None, description="테스트할 일기 내용"),
+    keywords_json: Optional[str] = Form(None, description="키워드 JSON (예: {\"기분\": \"우울\"})"),
+    persona: int = Form(1, description="페르소나 번호 (1~5)"),
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    [개발용 타임머신 API] 
+    과거 날짜로 일기(텍스트+키워드)를 강제 생성하고, 실제 AI 서버에 분석을 요청합니다.
+    """
+    # 1. JSON 검사 (실제 일기 작성 API와 동일한 방어 로직)
+    keywords = None
+    if keywords_json:
+        try:
+            keywords = json.loads(keywords_json)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="keywords_json 형식이 올바르지 않습니다.")
+
+    # 1-1. 내용이나 키워드 둘 중 하나는 무조건 있는지 체크
+    if not content and not keywords:
+        raise HTTPException(status_code=400, detail="일기 내용(content)이나 키워드(keywords_json) 중 하나는 반드시 입력해야 합니다.")
+
+    # 2. 날짜 조작
+    target_date = datetime.now() - timedelta(days=days_ago)
+
+    # 3. 일기 생성
+    new_diary = Diary(
+        user_id=current_user.user_id,
+        content=content,
+        keywords=keywords,        # 👈 파싱된 키워드 딕셔너리 삽입!
+        input_type=input_type,    # 👈 입력 타입(HYBRID 등) 삽입!
+        created_at=target_date    # 과거 날짜로 조작
+    )
+    db.add(new_diary)
+    
+    # 4. 출석부 체크 (중복 방지)
+    existing_att = await db.exec(
+        select(Attendance).where(
+            Attendance.user_id == current_user.user_id, 
+            Attendance.att_date == target_date.date()
+        )
+    )
+    if not existing_att.first():
+        new_att = Attendance(user_id=current_user.user_id, att_date=target_date.date())
+        db.add(new_att)
+
+    await db.commit()
+    await db.refresh(new_diary)
+
+    # 5. 진짜 AI 서버로 분석 요청 (키워드까지 포함되어 날아갑니다!)
+    background_tasks.add_task(request_diary_analysis, new_diary.diary_id, current_user.user_id, persona)
+
+    return {
+        "message": f"{days_ago}일 전({target_date.strftime('%Y-%m-%d')}) 일기가 저장되었고, AI 서버로 분석을 요청했습니다!",
+        "diary_id": new_diary.diary_id,
+        "input_type": input_type,
+        "keywords_saved": keywords
+    }

@@ -1,5 +1,6 @@
 # app/services/ai_services.py
 import httpx
+from fastapi import HTTPException
 import os
 import logging
 from datetime import datetime # 추가: 날짜 계산을 위해 필요합니다.
@@ -161,3 +162,31 @@ async def notify_diary_deleted_to_ai(diary_id: int):
                 
     except Exception as e:
         print(f"🚨 [AI Server] 분석 취소 요청 중 통신 오류 발생: {e}")
+
+
+# 4. 게임모드로 바뀌면서 백엔드에서 ai 서버로 데이터를 쏘고 받아오는 로직 추가
+async def request_plan_b_analysis_from_ai(user_id: int, text: str, timestamp: str) -> dict:
+    """
+    프론트에서 받은 텍스트를 AI 서버(Plan B)로 보내고 결과를 받아옵니다.
+    """
+    # 실제 AI 서버의 Plan B 엔드포인트 주소로 변경해주세요.
+    ai_url = f"{AI_SERVER_URL}/plan_b_endpoint" 
+    
+    # AI 서버 명세에 맞춘 Payload
+    payload = {
+        "user_id": str(user_id), # int인 user_id를 명세에 맞춰 string으로 변환
+        "text": text,
+        "timestamp": timestamp
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(ai_url, json=payload, timeout=10.0)
+            response.raise_for_status()
+            
+            # AI 서버가 응답한 JSON 데이터 (sentiment, score 등 포함) 반환
+            return response.json() 
+            
+        except httpx.HTTPStatusError as e:
+            print(f"❌ AI 서버 통신 에러: {e}")
+            raise HTTPException(status_code=502, detail="AI 서버에서 올바른 응답을 받지 못했습니다.")       

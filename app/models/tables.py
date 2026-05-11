@@ -42,6 +42,8 @@ class User(SQLModel, table=True):
     achievements: List["Achievement"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
     preference: Optional["UserPreference"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
     notification_logs: List["NotificationLog"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    # 게임모드로 바뀌면서 이것도 추가함.
+    interactions: List["InteractionList"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # 2. UserPreferences (취향)
 class UserPreference(SQLModel, table=True):
@@ -234,3 +236,21 @@ class DiaryFeedback(SQLModel, table=True):
     is_sent_to_ai: bool = Field(default=False)
     
     created_at: datetime = Field(default_factory=datetime.now)
+
+
+# 14. 게임 모드로 바뀌면서 상호작용 리스트 테이블 추가함
+class InteractionList(SQLModel, table=True):
+    __tablename__ = "interaction_lists"
+
+    interaction_id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.user_id", index=True)
+    
+    sentiment: str = Field(max_length=20)       # "positive" | "negative"
+    sentiment_score: float = Field()            # -1.0 ~ +1.0
+    intensity: int = Field()                    # 0 | 1 | 2 | 3
+    game_event: str = Field(max_length=100)     # 트리거 ID
+    
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # 관계 설정 (단방향 혹은 양방향)
+    user: Optional[User] = Relationship(back_populates="interactions")

@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # engine과 async_session_maker 가져오기
 from database import engine, async_session_maker 
-from app.api import auth, user, attendance, diary, solution, activity
+from app.api import auth, user, attendance, diary, solution, activity, interaction
 from app.services.notification import check_and_send_inactivity_alarms, send_custom_daily_alarm
 
 from app.services.ai_services import send_feedback_to_ai_server
@@ -94,6 +94,7 @@ app.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
 app.include_router(diary.router, prefix="/diaries", tags=["diaries"])
 app.include_router(solution.router, prefix="/solutions", tags=["solutions"])
 app.include_router(activity.router, prefix="/activities", tags=["activities"])
+app.include_router(interaction.router, prefix="/interactions", tags=["interactions"])
 
 @app.get("/")
 def read_root():
